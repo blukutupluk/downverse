@@ -1,0 +1,44 @@
+# ============================================================================
+# Termux P0 baseline - DEFAULT DENY
+# Semua isi HOME diabaikan, hanya file proyek yang di-whitelist.
+# Tujuan: cookie, kredensial, log, media, cache, dan backup tidak pernah
+# bisa ikut ter-stage, bahkan oleh `git add .`.
+# ============================================================================
+
+/*
+
+# --- Proyek aktif (satu-satunya yang dilacak) ---
+!/.gitignore
+!/README.txt
+!/install.fish
+!/downloader.sh
+!/downloader/
+
+# --- Pertahanan berlapis (redundan, tapi eksplisit) ---
+/cookies/
+/.config/
+/.local/
+/installers/
+/logs/
+/storage/
+*backup*/
+*.tar.zst
+*.tar.gz
+
+# --- Rahasia / kredensial ---
+*.env
+.env
+.env.*
+auth.json
+service.json
+*credentials*
+*token*
+*cookie*
+
+# --- Log & artefak ---
+*.log
+/downloader/logs/
+__pycache__/
+*.pyc
+*.tmp
+*.swp
