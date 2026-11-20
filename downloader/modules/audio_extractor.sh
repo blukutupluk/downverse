@@ -23,6 +23,12 @@ declare -A AE_OUTPUT_OWNER=()
 declare -a AE_BATCH_FAILED=()
 declare -a _AE_SCRATCH_DIRS=()
 _AE_TRAP_ARMED=0
+_AE_SAVED_EXIT=""
+_AE_SAVED_INT=""
+_AE_SAVED_TERM=""
+_AE_HAD_EXIT=0
+_AE_HAD_INT=0
+_AE_HAD_TERM=0
 
 ae_reset_state() {
   AE_TOTAL=0
@@ -43,16 +49,83 @@ _ae_cleanup_all() {
   _AE_SCRATCH_DIRS=()
 }
 
+# Ubah baris "trap -p" menjadi string perintah asli tanpa eval.
+# Keluaran Bash: trap -- 'perintah' EXIT|SIGINT|SIGTERM
+_ae_trap_command() {
+  local line="$1" label="$2" code
+  [[ -n "$line" ]] || { printf 'NONE'; return 0; }
+  code="${line#trap -- }"
+  code="${code% "$label"}"
+  [[ "$code" == \'*\' ]] || { printf 'NONE'; return 0; }
+  code="${code#\'}"
+  code="${code%\'}"
+  code="${code//\'\\\'\'/\'}"
+  printf '%s' "$code"
+}
+
 _ae_arm_trap() {
-  if [[ "$_AE_TRAP_ARMED" -eq 0 ]]; then
-    trap '_ae_cleanup_all' EXIT INT TERM
-    _AE_TRAP_ARMED=1
+  local line saved
+  ((_AE_TRAP_ARMED == 1)) && return 0
+
+  line=$(trap -p EXIT)
+  _AE_HAD_EXIT=0; [[ -n "$line" ]] && _AE_HAD_EXIT=1
+  saved=$(_ae_trap_command "$line" EXIT)
+  [[ "$saved" == "NONE" ]] && saved=""
+  _AE_SAVED_EXIT="$saved"
+
+  line=$(trap -p INT)
+  _AE_HAD_INT=0; [[ -n "$line" ]] && _AE_HAD_INT=1
+  saved=$(_ae_trap_command "$line" SIGINT)
+  [[ "$saved" == "NONE" ]] && saved=""
+  _AE_SAVED_INT="$saved"
+
+  line=$(trap -p TERM)
+  _AE_HAD_TERM=0; [[ -n "$line" ]] && _AE_HAD_TERM=1
+  saved=$(_ae_trap_command "$line" SIGTERM)
+  [[ "$saved" == "NONE" ]] && saved=""
+  _AE_SAVED_TERM="$saved"
+
+  # Bersihkan scratch lebih dulu, kembalikan status exit caller, lalu jalankan
+  # handler caller apa adanya. INT/TERM diakhiri exit agar job tidak dilanjutkan.
+  local prefix='__ae_saved_rc=$?; _ae_cleanup_all; (exit "$__ae_saved_rc")'
+  if ((_AE_HAD_EXIT)); then
+    trap "$prefix; $_AE_SAVED_EXIT" EXIT
+  else
+    trap "$prefix" EXIT
   fi
+
+  if ((_AE_HAD_INT)) && [[ -z "$_AE_SAVED_INT" ]]; then
+    trap '' INT
+  elif ((_AE_HAD_INT)); then
+    trap "$prefix; $_AE_SAVED_INT; exit 130" INT
+  else
+    trap "$prefix; exit 130" INT
+  fi
+
+  if ((_AE_HAD_TERM)) && [[ -z "$_AE_SAVED_TERM" ]]; then
+    trap '' TERM
+  elif ((_AE_HAD_TERM)); then
+    trap "$prefix; $_AE_SAVED_TERM; exit 143" TERM
+  else
+    trap "$prefix; exit 143" TERM
+  fi
+  _AE_TRAP_ARMED=1
 }
 
 _ae_disarm_trap() {
-  trap - EXIT INT TERM
-  _AE_TRAP_ARMED=0
+  if ((_AE_TRAP_ARMED == 1)); then
+    if ((_AE_HAD_EXIT)); then trap "$_AE_SAVED_EXIT" EXIT; else trap - EXIT; fi
+    if ((_AE_HAD_INT)); then trap "$_AE_SAVED_INT" INT; else trap - INT; fi
+    if ((_AE_HAD_TERM)); then trap "$_AE_SAVED_TERM" TERM; else trap - TERM; fi
+    _AE_TRAP_ARMED=0
+  fi
+  _AE_SAVED_EXIT=""
+  _AE_SAVED_INT=""
+  _AE_SAVED_TERM=""
+  _AE_HAD_EXIT=0
+  _AE_HAD_INT=0
+  _AE_HAD_TERM=0
+  _ae_cleanup_all
 }
 
 _ae_ensure_dirs() {
@@ -582,7 +655,6 @@ module_audio_extractor() {
   _ae_module_body
   local rc=$?
   _ae_disarm_trap
-  _ae_cleanup_all
   ui_pause
   return "$rc"
 }
