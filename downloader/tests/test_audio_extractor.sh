@@ -34,6 +34,8 @@ ffprobe() {
   [[ -n "$target" && -f "$target" ]] || return 1
   local first=""
   IFS= read -r first < "$target" || :
+  # File rusak: ffprobe gagal membaca durasi maupun stream.
+  [[ "$first" == "CORRUPT" ]] && return 1
   case "$entries" in
     format=duration)
       if [[ "$first" == "BAD_DURATION" ]]; then printf '0\n'; else printf '2.000000\n'; fi ;;
@@ -279,6 +281,66 @@ test_temp_cleanup() {
   fi
 }
 
+# --- 9: prompt ask ke stderr, stdout hanya satu token bersih ---
+test_ask_existing_stdout_contract() {
+  reset_state
+  local input expected out err pass=1
+  while IFS='|' read -r input expected; do
+    [[ -n "$input" ]] || continue
+    out=$(printf '%s\n' "$input" | _ae_ask_existing "$TMP/ask.mp3" "$TMP/ask.txt" 0 2>"$TMP/ask.err")
+    err=$(<"$TMP/ask.err")
+    if [[ "$out" != "$expected" ]]; then
+      pass=0
+      printf '     stdout=%q expected=%q (input=%q)\n' "$out" "$expected" "$input"
+    fi
+    if [[ "$err" != *'Output sudah ada'* || "$err" != *'Pilih [1/2/3]:'* ]]; then
+      pass=0
+      printf '     prompt tidak ada di stderr (input=%q, stderr=%q)\n' "$input" "$err"
+    fi
+  done <<'EOF'
+1|no
+2|yes
+3|cancel
+EOF
+  if ((pass)); then
+    ok test_ask_existing_stdout_contract
+  else
+    bad test_ask_existing_stdout_contract
+  fi
+}
+
+# --- 10: bahasa hasil deteksi ditampilkan per file ---
+test_detected_language_displayed() {
+  reset_state
+  local v out
+  v=$(make_video lang.mp4 VIDEO)
+  run_ae ae_process "$v" both no
+  out=$(<"$TMP/ae.out")
+  if [[ "$out" == *'bahasa=id'* ]] \
+    && (( AE_TXT_OK == 1 && AE_FAIL == 0 )); then
+    ok test_detected_language_displayed
+  else
+    bad test_detected_language_displayed "counters=$(counters) out=$(printf '%q' "$out")"
+  fi
+}
+
+# --- 11: file rusak dibedakan dari file tanpa stream audio ---
+test_corrupt_video_message() {
+  reset_state
+  local v out
+  v=$(make_video corrupt.mp4 CORRUPT)
+  run_ae ae_process "$v" both no
+  out=$(<"$TMP/ae.out")
+  if [[ "$out" == *'Gagal membaca video'* ]] \
+    && [[ "$out" != *'tidak memiliki stream audio'* ]] \
+    && (( AE_FAIL == 1 && AE_MP3_OK == 0 && AE_TXT_OK == 0 )) \
+    && [[ ! -e "$AUDIO_EXTRACTOR_ROOT/corrupt.mp3" ]]; then
+    ok test_corrupt_video_message
+  else
+    bad test_corrupt_video_message "counters=$(counters) out=$(printf '%q' "$out")"
+  fi
+}
+
 test_no_audio_stream
 test_no_speech_bucket
 test_skip_valid_output
@@ -287,6 +349,9 @@ test_reprocess_backup
 test_filename_with_spaces
 test_batch_continue_on_failure
 test_temp_cleanup
+test_ask_existing_stdout_contract
+test_detected_language_displayed
+test_corrupt_video_message
 
 if ((fails == 0)); then
   printf '\nSemua test lolos.\n'

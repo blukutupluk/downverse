@@ -198,6 +198,7 @@ ae_probe() {
   local video="$1" streams
   AE_DURATION=""
   AE_HAS_AUDIO=0
+  AE_DURATION_OK=0
   [[ -f "$video" && -r "$video" ]] || return 1
   AE_DURATION=$(ffprobe -v error -show_entries format=duration \
     -of default=noprint_wrappers=1:nokey=1 -- "$video" 2>/dev/null | head -n 1)
@@ -206,6 +207,8 @@ ae_probe() {
   if printf '%s\n' "$streams" | grep -qi '^audio$'; then AE_HAS_AUDIO=1; fi
   [[ -n "$AE_DURATION" && "$AE_DURATION" != "N/A" ]] || return 1
   awk -v d="$AE_DURATION" 'BEGIN { exit !(d > 0) }' || return 1
+  # Durasi terbaca: bedakan file rusak/tidak bisa dibaca dari file tanpa audio.
+  AE_DURATION_OK=1
   [[ "$AE_HAS_AUDIO" -eq 1 ]]
 }
 
@@ -315,7 +318,7 @@ _ae_ask_existing() {
 }
 
 _ae_transcribe() {
-  local scratch="$1" audio="$2" txt_tmp="$3" json raw rc ok_val reason msg
+  local scratch="$1" audio="$2" txt_tmp="$3" json raw rc ok_val reason msg language
   if [[ ! -f "$AE_TRANSCRIBE_SRC" ]]; then
     ui_error "Backend transcribe.py tidak ditemukan: $AE_TRANSCRIBE_SRC"
     log_error "AE backend missing $AE_TRANSCRIBE_SRC"
@@ -330,6 +333,10 @@ _ae_transcribe() {
     2>"$scratch/stderr.log")
   rc=$?
   json="${raw##*$'\n'}"
+  # _ae_transcribe dipanggil lewat $(...), jadi variabel global tidak sampai ke
+  # caller. Simpan bahasa hasil deteksi di scratch agar bisa ditampilkan.
+  language=$(_ae_json_value "$json" language)
+  printf '%s' "$language" > "$scratch/language" 2>/dev/null || :
   if ((rc != 0)); then
     msg=$(_ae_json_value "$json" message)
     ui_error "Transkripsi gagal (exit $rc): ${msg:-lihat logs untuk detail}."
@@ -362,6 +369,7 @@ ae_process() {
   local name base stem scratch mp3_tmp audio_tmp txt_tmp
   local final_mp3 final_txt need_mp3=0 need_txt=0
   local existing=0 invalid=0 choice mp3_ok=0 fail_before=$AE_FAIL
+  local lang_suffix="" detected_lang=""
 
   AE_TOTAL=$((AE_TOTAL + 1))
   _ae_ensure_dirs || { AE_FAIL=$((AE_FAIL + 1)); return 1; }
@@ -369,10 +377,10 @@ ae_process() {
   name=$(basename -- "$video")
   base="${name%.*}"
   if ! ae_probe "$video"; then
-    if [[ "${AE_HAS_AUDIO:-0}" -eq 0 ]]; then
+    if [[ "${AE_DURATION_OK:-0}" -eq 1 && "${AE_HAS_AUDIO:-0}" -eq 0 ]]; then
       ui_error "Video tidak memiliki stream audio: $name"
     else
-      ui_error "Gagal membaca durasi video: $name"
+      ui_error "Gagal membaca video: $name"
     fi
     AE_FAIL=$((AE_FAIL + 1))
     log_error "AE probe failed video=$video"
@@ -488,11 +496,16 @@ ae_process() {
       txt_tmp="$scratch/$base.$RANDOM.$RANDOM.txt"
       rm -f -- "$txt_tmp"
       json_result=$(_ae_transcribe "$scratch" "$audio_for_txt" "$txt_tmp")
+      lang_suffix=""
+      if [[ -f "$scratch/language" ]]; then
+        detected_lang=$(<"$scratch/language")
+        [[ -n "$detected_lang" ]] && lang_suffix=" (bahasa=$detected_lang)"
+      fi
       case "$json_result" in
         NO_SPEECH)
           AE_NO_SPEECH=$((AE_NO_SPEECH + 1))
           printf '%bTANPA_UCAPAN%b\n' "$YELLOW" "$RESET"
-          printf '  Tidak ada ucapan yang terdeteksi; TXT tidak dibuat: %s\n' "$name"
+          printf '  Tidak ada ucapan yang terdeteksi; TXT tidak dibuat: %s%s\n' "$name" "$lang_suffix"
           log_info "AE no_speech video=$video"
           ;;
         "$txt_tmp")
@@ -500,7 +513,7 @@ ae_process() {
             AE_TXT_OK=$((AE_TXT_OK + 1))
             AE_OUTPUT_OWNER["$final_txt"]="$video"
             printf '%bOK%b\n' "$GREEN" "$RESET"
-            printf '  TXT: %s\n' "$final_txt"
+            printf '  TXT: %s%s\n' "$final_txt" "$lang_suffix"
             log_info "AE txt ok path=$final_txt"
           else
             printf '%bGAGAL%b\n' "$RED" "$RESET"
