@@ -298,12 +298,13 @@ _ae_backup_file() {
 
 _ae_ask_existing() {
   local mp3="$1" txt="$2" invalid="$3" answer
-  printf '\n%s\n' 'Output sudah ada. Pilih tindakan:'
-  printf '%s\n' '1) Lewati' '2) Proses ulang (backup dulu)' '3) Batal'
+  # Prompt harus ke stderr: caller menangkap stdout lewat $(...) sebagai jawaban.
+  printf '\n%s\n' 'Output sudah ada. Pilih tindakan:' >&2
+  printf '%s\n' '1) Lewati' '2) Proses ulang (backup dulu)' '3) Batal' >&2
   if ((invalid)); then
-    ui_warn "Ada output lama yang tidak valid; tidak akan ditimpa tanpa proses ulang."
+    ui_warn "Ada output lama yang tidak valid; tidak akan ditimpa tanpa proses ulang." >&2
   fi
-  printf 'Pilih [1/2/3]: '
+  printf 'Pilih [1/2/3]: ' >&2
   IFS= read -r answer
   case "$answer" in
     1|l|L|lewati|Lewati) printf 'no' ;;
