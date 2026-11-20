@@ -70,6 +70,11 @@ bulk_run() {
     fi
   done < <(bulk_parse_list "$list")
 
+  if ((total == 0)); then
+    ui_error "Tidak ada URL valid di daftar: $list"
+    return 1
+  fi
+
   printf '\n%s\n' "TOTAL=$total BERHASIL=$berhasil GAGAL=$gagal DILEWATI=$dilewati"
   local i=0
   for url in "${failed_urls[@]}"; do
