@@ -47,10 +47,21 @@ https://www.facebook.com/reel/111/
 EOF
   out="$(bulk_parse_list "$f")"
   expected=$'https://www.facebook.com/reel/111/\nhttps://www.youtube.com/watch?v=abc'
-  if [[ "$out" == "$expected" ]]; then
+  if [[ "$out" != "$expected" ]]; then
+    bad test_parse_list "dapat=$(printf '%q' "$out")"
+    return
+  fi
+  # Pastikan baris invalid benar-benar tidak sampai ke backend.
+  CALLS="$TMP/list.calls"
+  : > "$CALLS"
+  rm -f "$f.done"
+  bulk_run 'Facebook' "$TMP/out" '' 1 "$f" > /dev/null
+  if (( $(line_count "$CALLS") == 2 )) \
+    && ! grep -q 'bukan-url' "$CALLS" \
+    && ! grep -q -- '#' "$CALLS"; then
     ok test_parse_list
   else
-    bad test_parse_list "dapat=$(printf '%q' "$out")"
+    bad test_parse_list "argumen backend: $(printf '%q' "$(< "$CALLS")")"
   fi
 }
 
@@ -68,7 +79,8 @@ test_bulk_run_success() {
   done="$(line_count "$f.done")"
   if ((rc == 0 && calls == 2 && done == 2)) \
     && grep -q 'TOTAL=2 BERHASIL=2 GAGAL=0 DILEWATI=0' <<< "$summary" \
-    && grep -q -- '--no-playlist' "$CALLS"; then
+    && grep -q -- '--no-playlist' "$CALLS" \
+    && grep -Fq -- '-f bv*+ba/b --merge-output-format mp4' "$CALLS"; then
     ok test_bulk_run_success
   else
     bad test_bulk_run_success "rc=$rc calls=$calls done=$done summary=$(printf '%q' "$summary")"
@@ -143,11 +155,28 @@ test_bulk_run_format_mapping() {
   fi
 }
 
+# --- test 6: daftar tanpa URL valid ---
+test_bulk_run_empty_list() {
+  local f="$TMP/empty.txt" summary rc
+  printf '%s\n' '# hanya komentar' '' 'bukan-url' > "$f"
+  CALLS="$TMP/empty.calls"
+  : > "$CALLS"
+  summary="$(bulk_run 'Facebook' "$TMP/out" '' 1 "$f" 2>&1)"
+  rc=$?
+  if ((rc == 1)) && (( $(line_count "$CALLS") == 0 )) \
+    && grep -qi 'tidak ada url valid' <<< "$summary"; then
+    ok test_bulk_run_empty_list
+  else
+    bad test_bulk_run_empty_list "rc=$rc summary=$(printf '%q' "$summary")"
+  fi
+}
+
 test_parse_list
 test_bulk_run_success
 test_bulk_run_resume
 test_bulk_run_continue_on_failure
 test_bulk_run_format_mapping
+test_bulk_run_empty_list
 
 if ((fails == 0)); then
   printf '\nSemua test lolos.\n'
