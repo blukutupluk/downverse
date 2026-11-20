@@ -341,6 +341,172 @@ test_corrupt_video_message() {
   fi
 }
 
+# --- 12: single video, tepat satu video → Enter langsung memakainya ---
+test_single_autopick_one_video() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" v out
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  v=$(make_video auto.mp4 VIDEO)
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ "$out" != *'Pilih video'* ]] \
+    && [[ -f "$AUDIO_EXTRACTOR_ROOT/auto.mp3" ]] \
+    && (( AE_TOTAL == 1 )); then
+    ok test_single_autopick_one_video
+  else
+    bad test_single_autopick_one_video "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
+# --- 13: single video, beberapa video → daftar bernomor, Enter pilih 1 ---
+test_single_list_default_choice() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  make_video a.mp4 VIDEO >/dev/null
+  make_video b.mp4 VIDEO >/dev/null
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ "$out" == *'Pilih video [1-2]'* ]] \
+    && [[ "$out" == *'a.mp4'* && "$out" == *'b.mp4'* ]] \
+    && [[ -f "$AUDIO_EXTRACTOR_ROOT/a.mp3" ]] \
+    && [[ ! -e "$AUDIO_EXTRACTOR_ROOT/b.mp3" ]] \
+    && (( AE_TOTAL == 1 )); then
+    ok test_single_list_default_choice
+  else
+    bad test_single_list_default_choice "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
+# --- 14: single video, folder kosong → error jelas, tanpa ffmpeg ---
+test_single_empty_folder_error() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ "$out" == *'Tidak ada video'* ]] \
+    && [[ "$out" == *"$TMP/in"* ]] \
+    && [[ ! -s "$FFMPEG_CALLS" ]] \
+    && (( AE_TOTAL == 0 )); then
+    ok test_single_empty_folder_error
+  else
+    bad test_single_empty_folder_error "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
+# --- 15: daftar bernomor tetap benar untuk nama ber-spasi ---
+test_single_list_with_spaces() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  make_video a.mp4 VIDEO >/dev/null
+  make_video 'copy dengan spasi.mp4' VIDEO >/dev/null
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n\n2\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ "$out" == *'copy dengan spasi.mp4'* ]] \
+    && [[ -f "$AUDIO_EXTRACTOR_ROOT/copy dengan spasi.mp3" ]] \
+    && (( AE_TOTAL == 1 )); then
+    ok test_single_list_with_spaces
+  else
+    bad test_single_list_with_spaces "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
+# --- 16: video di dalam folder output tetap ditolak ---
+test_single_inside_output_rejected() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out
+  rm -f -- "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  mkdir -p "$AUDIO_EXTRACTOR_ROOT/in"
+  printf 'VIDEO\n' > "$AUDIO_EXTRACTOR_ROOT/in/inside.mp4"
+  AE_INPUT_DIR="$AUDIO_EXTRACTOR_ROOT/in"
+  printf '1\n1\n\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  rm -rf -- "$AUDIO_EXTRACTOR_ROOT/in"
+  if { [[ "$out" == *'Tidak ada video'* ]] || [[ "$out" == *'berada di dalam folder output'* ]]; } \
+    && [[ ! -s "$FFMPEG_CALLS" ]] \
+    && (( AE_TOTAL == 0 )); then
+    ok test_single_inside_output_rejected
+  else
+    bad test_single_inside_output_rejected "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
+# --- 17: mengetik path lengkap tetap bekerja ---
+test_single_typed_path_still_works() {
+  reset_state
+  local manual out
+  rm -f -- "$TMP"/*.mp4 "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  printf 'VIDEO\n' > "$TMP/manual.mp4"
+  manual="$TMP/manual.mp4"
+  printf '1\n1\n%s\n' "$manual" > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  if [[ -f "$AUDIO_EXTRACTOR_ROOT/manual.mp3" ]] \
+    && [[ "$out" != *'Pilih video'* ]] \
+    && (( AE_TOTAL == 1 )); then
+    ok test_single_typed_path_still_works
+  else
+    bad test_single_typed_path_still_works "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
+# --- 18: pilihan di luar rentang ditolak tanpa memproses ---
+test_single_invalid_choice() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  make_video a.mp4 VIDEO >/dev/null
+  make_video b.mp4 VIDEO >/dev/null
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n\n9\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ "$out" == *'Pilihan video tidak valid'* ]] \
+    && [[ ! -s "$FFMPEG_CALLS" ]] \
+    && (( AE_TOTAL == 0 )); then
+    ok test_single_invalid_choice
+  else
+    bad test_single_invalid_choice "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
+# --- 19: pilihan dengan leading zero dibaca desimal, bukan oktal ---
+test_single_leading_zero_choice() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out i
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  for i in $(seq -w 1 10); do make_video "v$i.mp4" VIDEO >/dev/null; done
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n\n08\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ -f "$AUDIO_EXTRACTOR_ROOT/v08.mp3" ]] \
+    && [[ "$out" != *'Pilihan video tidak valid'* ]] \
+    && (( AE_TOTAL == 1 )); then
+    ok test_single_leading_zero_choice
+  else
+    bad test_single_leading_zero_choice "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
 test_no_audio_stream
 test_no_speech_bucket
 test_skip_valid_output
@@ -352,6 +518,14 @@ test_temp_cleanup
 test_ask_existing_stdout_contract
 test_detected_language_displayed
 test_corrupt_video_message
+test_single_autopick_one_video
+test_single_list_default_choice
+test_single_empty_folder_error
+test_single_list_with_spaces
+test_single_inside_output_rejected
+test_single_typed_path_still_works
+test_single_invalid_choice
+test_single_leading_zero_choice
 
 if ((fails == 0)); then
   printf '\nSemua test lolos.\n'

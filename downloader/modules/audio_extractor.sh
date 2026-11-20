@@ -17,6 +17,7 @@ AE_TXT_OK=0
 AE_NO_SPEECH=0
 AE_SKIP=0
 AE_FAIL=0
+AE_VIDEO_FILES=()
 AE_DURATION=""
 AE_HAS_AUDIO=0
 declare -A AE_OUTPUT_OWNER=()
@@ -538,10 +539,21 @@ ae_process() {
   return 0
 }
 
+_ae_collect_videos() {
+  local dir="$1" f
+  AE_VIDEO_FILES=()
+  while IFS= read -r -d '' f; do
+    if _ae_supported_ext "$f" && ! _ae_inside_out "$f"; then AE_VIDEO_FILES+=("$f"); fi
+  done < <(find "$dir" -maxdepth 1 -type f \( \
+    -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.mov' -o -iname '*.avi' -o \
+    -iname '*.webm' -o -iname '*.flv' -o -iname '*.wmv' -o -iname '*.m4v' -o \
+    -iname '*.3gp' -o -iname '*.ts' -o -iname '*.mts' -o -iname '*.m2ts' \) \
+    -print0 2>/dev/null | sort -z)
+}
+
 ae_batch() {
   local dir="${1:-$AE_INPUT_DIR}" job="${2:-both}" reprocess="${3:-ask}"
   local answer batch_reprocess="$reprocess" f i=0 n before
-  local -a files=()
 
   if [[ ! -d "$dir" ]]; then
     ui_error "Folder input tidak ditemukan: $dir"
@@ -552,14 +564,9 @@ ae_batch() {
     return 1
   fi
 
-  while IFS= read -r -d '' f; do
-    if _ae_supported_ext "$f" && ! _ae_inside_out "$f"; then files+=("$f"); fi
-  done < <(find "$dir" -maxdepth 1 -type f \( \
-    -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.mov' -o -iname '*.avi' -o \
-    -iname '*.webm' -o -iname '*.flv' -o -iname '*.wmv' -o -iname '*.m4v' -o \
-    -iname '*.3gp' -o -iname '*.ts' -o -iname '*.mts' -o -iname '*.m2ts' \) -print0 2>/dev/null)
+  _ae_collect_videos "$dir"
 
-  if [[ ${#files[@]} -eq 0 ]]; then
+  if [[ ${#AE_VIDEO_FILES[@]} -eq 0 ]]; then
     ui_warn "Tidak ada file video yang didukung di: $dir"
     return 0
   fi
@@ -573,9 +580,9 @@ ae_batch() {
     esac
   fi
 
-  n=${#files[@]}
+  n=${#AE_VIDEO_FILES[@]}
   printf '\nDitemukan %d file video.\n' "$n"
-  for f in "${files[@]}"; do
+  for f in "${AE_VIDEO_FILES[@]}"; do
     i=$((i + 1))
     printf '\n[%d/%d] %s\n' "$i" "$n" "$(basename -- "$f")"
     before=$AE_FAIL
@@ -598,7 +605,7 @@ _ae_print_summary() {
 }
 
 _ae_module_body() {
-  local mode="" job_choice="" job="" video="" input_dir="" rc
+  local mode="" job_choice="" job="" video="" input_dir="" rc n=0 i=0 pil="" pil_num=0
   ui_header
   ui_section "AUDIO EXTRACTOR + TRANSCRIBER"
   printf '\n%s\n' 'Pilih mode: 1) Single Video  2) Batch Folder  0) Kembali'
@@ -623,9 +630,37 @@ _ae_module_body() {
 
   ae_reset_state
   if [[ "$mode" == "1" ]]; then
-    printf '%b' "${CYAN}${BOLD}Path video: ${RESET}"
+    printf '%b' "${CYAN}${BOLD}Path video [Enter = otomatis dari ${AE_INPUT_DIR}]: ${RESET}"
     IFS= read -r video
-    if [[ -z "$video" || ! -f "$video" || ! -r "$video" ]]; then
+    if [[ -z "$video" ]]; then
+      _ae_collect_videos "$AE_INPUT_DIR"
+      n=${#AE_VIDEO_FILES[@]}
+      if ((n == 0)); then
+        ui_error "Tidak ada video di folder: $AE_INPUT_DIR"
+        return 1
+      elif ((n == 1)); then
+        video="${AE_VIDEO_FILES[0]}"
+      else
+        printf '\nDitemukan %d video di: %s\n' "$n" "$AE_INPUT_DIR"
+        for i in "${!AE_VIDEO_FILES[@]}"; do
+          printf '  [%d] %s\n' "$((i + 1))" "$(basename -- "${AE_VIDEO_FILES[i]}")"
+        done
+        printf 'Pilih video [1-%d]: ' "$n"
+        IFS= read -r pil
+        [[ -z "$pil" ]] && pil=1
+        if [[ ! "$pil" =~ ^[0-9]+$ ]]; then
+          ui_error "Pilihan video tidak valid: $pil"
+          return 1
+        fi
+        pil_num=$((10#$pil))
+        if ((pil_num < 1 || pil_num > n)); then
+          ui_error "Pilihan video tidak valid: $pil"
+          return 1
+        fi
+        video="${AE_VIDEO_FILES[pil_num-1]}"
+      fi
+    fi
+    if [[ ! -f "$video" || ! -r "$video" ]]; then
       ui_error "File video tidak ditemukan atau tidak bisa dibaca: $video"
       return 1
     fi
