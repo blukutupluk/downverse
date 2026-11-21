@@ -4,7 +4,7 @@
 Backend ini memakai Python Termux dan stdlib saja. API key dibaca dari file
 0600 yang ditentukan lewat --key-file; key tidak pernah masuk argv, env, atau
 log. Satu baris JSON ditulis ke stdout dengan kontrak yang sama seperti
-transcribe.py.
+backend sebelumnya.
 """
 
 from __future__ import annotations
