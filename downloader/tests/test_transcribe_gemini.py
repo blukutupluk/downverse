@@ -154,6 +154,7 @@ class GeminiBackendTests(unittest.TestCase):
         self.assertEqual(payload["reason"], "QUOTA_EXHAUSTED")
         self.assertIn("kuota", payload["message"].lower())
         self.assertIn("key", payload["message"].lower())
+        self.assertEqual(len(op.calls), 1)
         self.assertFalse(os.path.exists(self.out))
 
     def test_invalid_key_error(self):
@@ -287,6 +288,42 @@ class GeminiBackendTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         with open(self.out, encoding="utf-8") as handle:
             self.assertIn("Halo dunia.", handle.read())
+
+    def test_default_model_is_transcription_model(self):
+        self.assertEqual(g.MODEL, "gemini-3.5-transcribe")
+
+    def test_service_unavailable_maps_to_busy_message(self):
+        body = {
+            "error": {
+                "message": "gemini-4-hydrogen is currently experiencing high demand",
+                "code": "service_unavailable",
+            }
+        }
+        op = self.opener(*[FakeResponse(body, status=503) for _ in range(3)])
+        payload = g.transcribe(
+            self.audio, self.key, self.out, opener=op, sleep=lambda _seconds: None
+        )
+
+        self.assertEqual(payload["reason"], "SERVICE_UNAVAILABLE")
+        low = payload["message"].lower()
+        self.assertIn("503", payload["message"])
+        self.assertIn("coba lagi", low)
+        self.assertNotIn("koneksi", low)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_retry_succeeds_after_service_unavailable(self):
+        body = {"error": {"message": "high demand", "code": "service_unavailable"}}
+        op = self.opener(
+            FakeResponse(body, status=503),
+            FakeResponse(self.text_payload),
+        )
+        payload = g.transcribe(
+            self.audio, self.key, self.out, opener=op, sleep=lambda _seconds: None
+        )
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(len(op.calls), 2)
+        self.assertTrue(os.path.exists(self.out))
 
     def test_key_never_appears_in_error_messages(self):
         secret = "AIzaSECRET-123"

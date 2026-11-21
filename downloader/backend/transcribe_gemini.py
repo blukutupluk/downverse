@@ -15,16 +15,20 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
-MODEL = "gemini-4-hydrogen"
+MODEL = "gemini-3.5-transcribe"
 API_REVISION = "2026-05-20"
 BASE_URL = "https://generativelanguage.googleapis.com"
 INLINE_LIMIT_BYTES = 14 * 1024 * 1024
 MIME = "audio/mp3"
 MARKER = "[tidak terdengar]"
 TIMEOUT = 180
+# 503 dari Google biasanya sementara ("high demand"). Dua jeda ini memberi tiga
+# percobaan total, tanpa mengulang galat kuota/key yang tidak akan pulih.
+RETRY_DELAYS = (2, 5)
 
 PROMPT = (
     "Transkrip audio ini kata per kata dengan akurasi tinggi dalam bahasa aslinya.\n"
@@ -183,6 +187,13 @@ def _http_error(status, body):
             "INVALID_KEY",
             "API key Google AI Studio tidak valid. Periksa key lalu jalankan ulang menu 12.",
         )
+    if status == 503 or "service_unavailable" in low or "high demand" in low:
+        return GeminiError(
+            "SERVICE_UNAVAILABLE",
+            "Layanan Gemini sedang sibuk (HTTP 503, model %s). Tunggu sebentar lalu "
+            "coba lagi; bila tetap sibuk, ganti model di "
+            "downloader/backend/transcribe_gemini.py." % MODEL,
+        )
     return GeminiError(
         "API_ERROR",
         "Gemini menolak permintaan (HTTP %s). Periksa koneksi lalu jalankan ulang." % status,
@@ -241,6 +252,19 @@ def _request(url, payload, key, opener, method="POST", extra_headers=None, raw=N
     return parsed, response.headers
 
 
+def _request_with_retry(url, payload, key, opener, sleep=None):
+    """Ulangi hanya 503 (sibuk sementara); galat kuota/key langsung diteruskan."""
+    delays = list(RETRY_DELAYS)
+    while True:
+        try:
+            return _request(url, payload, key, opener)
+        except GeminiError as exc:
+            if exc.reason != "SERVICE_UNAVAILABLE" or not delays:
+                raise
+            delay = delays.pop(0)
+            (sleep or time.sleep)(delay)
+
+
 def upload_file(audio_path, key, opener):
     size = os.path.getsize(audio_path)
     _, headers = _request(
@@ -290,7 +314,7 @@ def _delete_file(name, key, opener):
     return ""
 
 
-def transcribe(audio_path, key_path, out_txt, opener=None):
+def transcribe(audio_path, key_path, out_txt, opener=None, sleep=None):
     key = ""
     uploaded_name = ""
     delete_note = ""
@@ -310,11 +334,12 @@ def transcribe(audio_path, key_path, out_txt, opener=None):
                 raise GeminiError("BAD_RESPONSE", "Upload Gemini selesai tetapi URI file tidak ada.")
             audio_input = {"type": "audio", "uri": uri, "mime_type": MIME}
 
-        body, _ = _request(
+        body, _ = _request_with_retry(
             BASE_URL + "/v1beta/interactions",
             {"model": MODEL, "input": [{"type": "text", "text": PROMPT}, audio_input]},
             key,
             opener,
+            sleep=sleep,
         )
         status, text = clean_transcript(read_text_response(body))
         if status == "no_speech":
