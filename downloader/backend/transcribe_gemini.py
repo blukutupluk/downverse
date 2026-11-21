@@ -13,6 +13,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -56,6 +57,11 @@ def load_key(path):
             "NO_KEY",
             "API key Gemini kosong. Tempel key di menu 12 saat prompt muncul.",
         )
+    if "\n" in key or "\r" in key:
+        raise GeminiError(
+            "INVALID_KEY",
+            "API key Gemini berisi lebih dari satu baris. Tempel satu key saja di menu 12.",
+        )
     return key
 
 
@@ -86,32 +92,55 @@ def read_text_response(payload):
     return ""
 
 
-def _normalized_marker(line):
-    value = line.strip().strip("*_`").strip().lower()
-    return value
+def _strip_wrappers(value):
+    value = value.strip()
+    while True:
+        before = value
+        value = value.strip("`*_").strip()
+        for left, right in (("[", "]"), ("(", ")"), ("{", "}"), ("<", ">")):
+            if value.startswith(left) and value.endswith(right):
+                value = value[1:-1].strip()
+        if value == before:
+            return value
+
+
+def _normalized_token(line):
+    value = line.strip().rstrip(".!?,;:").strip()
+    value = _strip_wrappers(value)
+    value = re.sub(r"[\(\[\{<][^\)\]\}>]*[\)\]\}>]", " ", value)
+    value = _strip_wrappers(value)
+    value = value.replace("\u2014", " ").replace("\u2013", " ")
+    value = re.sub(r"[\s\-_]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip().lower()
 
 
 def _is_no_speech_line(line):
-    value = line.strip().strip("*_`").strip().rstrip(".!?,;:")
-    value = "_".join(value.upper().replace("-", " ").split())
-    return value == "NO_SPEECH"
+    raw = _strip_wrappers(line.strip().rstrip(".!?,;:").strip())
+    if _normalized_token(line) != "no speech":
+        return False
+    # "No speech." dalam kalimat biasa bisa ucapan asli; hanya anggap penanda
+    # bila bentuknya kapital semua atau memakai pemisah khas penanda.
+    compact = raw.replace(" ", "")
+    return compact.upper() == compact or "_" in raw or "-" in raw
+
+
+def _is_marker(line):
+    return _normalized_token(line) in ("tidak terdengar", "tidak ada ucapan")
 
 
 def clean_transcript(text):
     lines = [line.strip() for line in _as_text(text).splitlines()]
-    if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].startswith("```"):
-        lines = lines[1:-1]
     lines = [line for line in lines if line]
+    if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].startswith("```"):
+        lines = [line for line in lines[1:-1] if line.strip()]
     joined = "\n".join(lines).strip()
     if not joined:
         return "empty", ""
-    if all(_is_no_speech_line(line) for line in lines):
-        return "no_speech", ""
     if any(_is_no_speech_line(line) for line in lines) and all(
-        _is_no_speech_line(line) or _normalized_marker(line) == MARKER for line in lines
+        _is_no_speech_line(line) or _is_marker(line) for line in lines
     ):
         return "no_speech", ""
-    if all(_normalized_marker(line) == MARKER for line in lines):
+    if all(_is_marker(line) for line in lines):
         return "empty", ""
     return "ok", joined
 
@@ -140,7 +169,10 @@ def _http_error(status, body):
             "Kuota API Gemini habis. Jalankan ulang menu 12 dan tempel API key lain "
             "saat prompt muncul.",
         )
-    if "model" in low:
+    if status == 404 or (
+        "model" in low
+        and any(term in low for term in ("not found", "not supported", "unsupported", "does not exist", "unknown model"))
+    ):
         return GeminiError(
             "MODEL",
             "Model Gemini tidak tersedia untuk key ini. Sunting konstanta MODEL di "
@@ -180,6 +212,12 @@ def _request(url, payload, key, opener, method="POST", extra_headers=None, raw=N
             "NETWORK",
             "Tidak bisa terhubung ke Gemini. Periksa koneksi internet lalu jalankan ulang. "
             "Detail: %s" % exc,
+        )
+    except (ValueError, UnicodeError):
+        # Jangan pernah menyertakan isi header/key di pesan galat.
+        raise GeminiError(
+            "BAD_RESPONSE",
+            "Permintaan ke Gemini tidak valid. Periksa API key lalu jalankan ulang menu 12.",
         )
     try:
         status = getattr(response, "status", None)
@@ -310,10 +348,10 @@ def transcribe(audio_path, key_path, out_txt, opener=None):
     except OSError as exc:
         result = _result(reason="IO", message="Gagal membaca atau menulis file: %s" % exc)
     except Exception as exc:  # kontrak: selalu satu baris JSON, jangan traceback
-        result = _result(
-            reason="ERROR",
-            message="Terjadi galat tak terduga: %s" % (str(exc).strip() or exc.__class__.__name__),
-        )
+        detail = str(exc).strip() or exc.__class__.__name__
+        if key:
+            detail = detail.replace(key, "***")
+        result = _result(reason="ERROR", message="Terjadi galat tak terduga: %s" % detail)
     finally:
         if uploaded_name:
             delete_note = _delete_file(uploaded_name, key, opener)
@@ -327,13 +365,19 @@ def main(argv=None, opener=None):
     parser.add_argument("--audio", required=True)
     parser.add_argument("--key-file", required=True)
     parser.add_argument("--out-txt", required=True)
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code in (0, None):
+            return 0
+        print(json.dumps(_result(reason="ERROR", message="Argumen command-line tidak valid."), ensure_ascii=False))
+        return 1
     try:
         result = transcribe(args.audio, args.key_file, args.out_txt, opener=opener)
     except Exception as exc:  # jaga kontrak satu baris JSON sampai proses selesai
         result = _result(
             reason="ERROR",
-            message="Terjadi galat tak terduga: %s" % (str(exc).strip() or exc.__class__.__name__),
+            message="Terjadi galat tak terduga: %s" % exc.__class__.__name__,
         )
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result.get("ok") or result.get("reason") == "NO_SPEECH" else 1

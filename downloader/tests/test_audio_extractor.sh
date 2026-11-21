@@ -48,7 +48,7 @@ ffprobe() {
     stream=codec_type)
       [[ "$first" == "NO_AUDIO" ]] || printf 'audio\n' ;;
     stream=codec_name)
-      case "$first" in AUDIO_DATA|SILENT|BAD_DURATION|QUOTA|SILENT_GEMINI) printf 'mp3\n' ;; esac ;;
+      case "$first" in AUDIO_DATA|SILENT|BAD_DURATION|QUOTA|SILENT_GEMINI|NOTE) printf 'mp3\n' ;; esac ;;
   esac
   return 0
 }
@@ -69,7 +69,7 @@ ffmpeg() {
   [[ -n "$target" ]] || return 1
   if [[ -n "$src" && -f "$src" ]]; then IFS= read -r first < "$src" || :; fi
   [[ "$first" == "FAIL" ]] && return 1
-  if [[ "$first" == SILENT* || "$first" == QUOTA ]]; then
+  if [[ "$first" == SILENT* || "$first" == QUOTA || "$first" == NOTE ]]; then
     printf '%s\n' "$first" > "$target"
   else
     printf 'AUDIO_DATA\n' > "$target"
@@ -129,6 +129,10 @@ python3() {
       return 1 ;;
     SILENT_GEMINI)
       printf '%s\n' '{"ok": false, "reason": "NO_SPEECH", "language": "", "duration": 0.0, "segments": 0, "text_chars": 0, "model": "gemini-4-hydrogen"}'
+      return 0 ;;
+    NOTE)
+      printf '%s\n' 'Hasil transkripsi Gemini.' > "$out" || return 1
+      printf '%s\n' '{"ok": true, "language": "", "duration": 0.0, "segments": 1, "text_chars": 24, "model": "gemini-4-hydrogen", "message": "File audio sementara di Gemini mungkin belum terhapus."}'
       return 0 ;;
   esac
   printf '%s\n' 'Hasil transkripsi Gemini.' '[tidak terdengar]' > "$out" || return 1
@@ -793,6 +797,27 @@ test_gemini_txt_only_with_spaces() {
   fi
 }
 
+# --- 31: catatan gagal hapus file Gemini tetap terlihat saat sukses ---
+test_gemini_delete_note_surfaced() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  printf 'stored-key\n' > "$AE_GEMINI_KEY_FILE"
+  make_video gemnote.mp4 NOTE >/dev/null
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ "$out" == *'mungkin belum terhapus'* ]] \
+    && [[ -s "$AUDIO_EXTRACTOR_ROOT/gemnote.txt" ]] \
+    && (( AE_TXT_OK == 1 && AE_FAIL == 0 )); then
+    ok test_gemini_delete_note_surfaced
+  else
+    bad test_gemini_delete_note_surfaced "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
 test_no_audio_stream
 test_no_speech_bucket
 test_skip_valid_output
@@ -823,6 +848,7 @@ test_gemini_no_speech_bucket
 test_gemini_reused_key_chmod_600
 test_gemini_whitespace_key_aborts
 test_gemini_txt_only_with_spaces
+test_gemini_delete_note_surfaced
 
 if ((fails == 0)); then
   printf '\nSemua test lolos.\n'

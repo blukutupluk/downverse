@@ -288,6 +288,71 @@ class GeminiBackendTests(unittest.TestCase):
         with open(self.out, encoding="utf-8") as handle:
             self.assertIn("Halo dunia.", handle.read())
 
+    def test_key_never_appears_in_error_messages(self):
+        secret = "AIzaSECRET-123"
+        with open(self.key, "w", encoding="utf-8") as handle:
+            handle.write(secret + "\n")
+
+        class Boom:
+            def __call__(self, request):
+                raise ValueError("Invalid header value b'%s'" % secret)
+
+        payload = g.transcribe(self.audio, self.key, self.out, opener=Boom())
+        self.assertFalse(payload["ok"])
+        self.assertNotIn(secret, json.dumps(payload))
+
+    def test_multiline_key_rejected_without_leaking(self):
+        secret = "AIzaSECRET-LINE2"
+        with open(self.key, "w", encoding="utf-8") as handle:
+            handle.write("first-line\n" + secret + "\n")
+        op = self.opener()
+        payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+
+        self.assertEqual(payload["reason"], "INVALID_KEY")
+        self.assertEqual(op.calls, [])
+        self.assertNotIn(secret, json.dumps(payload))
+
+    def test_no_speech_and_marker_variants_write_nothing(self):
+        no_speech = (
+            "[NO_SPEECH]",
+            "NO_SPEECH [tidak terdengar]",
+            "NO_SPEECH (tidak ada ucapan)",
+            "NO_SPEECH —",
+        )
+        markers = ("[tidak  terdengar].", "```\n[tidak terdengar]\n```")
+        for text in no_speech:
+            with self.subTest(text=text):
+                if os.path.exists(self.out):
+                    os.remove(self.out)
+                op = self.opener(FakeResponse({"outputs": [{"type": "text", "text": text}]}))
+                payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+                self.assertEqual(payload["reason"], "NO_SPEECH")
+                self.assertFalse(os.path.exists(self.out))
+        for text in markers:
+            with self.subTest(text=text):
+                if os.path.exists(self.out):
+                    os.remove(self.out)
+                op = self.opener(FakeResponse({"outputs": [{"type": "text", "text": text}]}))
+                payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+                self.assertEqual(payload["reason"], "BAD_RESPONSE")
+                self.assertFalse(os.path.exists(self.out))
+
+    def test_code_fenced_no_speech_with_blank_lines(self):
+        text = "\n```\n\nNO_SPEECH\n\n```\n"
+        op = self.opener(FakeResponse({"outputs": [{"type": "text", "text": text}]}))
+        payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+
+        self.assertEqual(payload["reason"], "NO_SPEECH")
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_mixed_case_no_speech_sentence_is_real_transcript(self):
+        op = self.opener(FakeResponse({"outputs": [{"type": "text", "text": "No speech."}]}))
+        payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+
+        self.assertTrue(payload["ok"])
+        with open(self.out, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "No speech.\n")
+
     def test_main_prints_single_json_line(self):
         argv = [
             "transcribe_gemini.py",

@@ -346,7 +346,16 @@ _ae_prompt_engine() {
       unset key
       return 1
     fi
-    key_tmp="$AE_GEMINI_KEY_FILE.tmp.$$"
+    if [[ -d "$AE_GEMINI_KEY_FILE" ]]; then
+      ui_error "Path API key Gemini adalah folder, bukan file: $AE_GEMINI_KEY_FILE" >&2
+      unset key
+      return 1
+    fi
+    if ! key_tmp=$(mktemp "$AE_GEMINI_KEY_FILE.tmp.XXXXXX"); then
+      ui_error "Gagal membuat file sementara API key Gemini." >&2
+      unset key
+      return 1
+    fi
     if ! (umask 077; printf '%s\n' "$key" > "$key_tmp") \
       || ! chmod 600 -- "$key_tmp" \
       || ! mv -f -- "$key_tmp" "$AE_GEMINI_KEY_FILE"; then
@@ -360,7 +369,7 @@ _ae_prompt_engine() {
     unset key
     return 1
   else
-    IFS= read -r stored < "$AE_GEMINI_KEY_FILE" || :
+    stored=$(<"$AE_GEMINI_KEY_FILE") || :
     if [[ -z "${stored//[[:space:]]/}" ]]; then
       ui_error "API key Gemini tersimpan kosong. Tempel key baru di prompt." >&2
       unset key stored
@@ -425,6 +434,10 @@ _ae_transcribe() {
   ok_val=$(_ae_json_value "$json" ok)
   reason=$(_ae_json_value "$json" reason)
   if [[ "$ok_val" == "true" ]]; then
+    msg=$(_ae_json_value "$json" message)
+    if [[ -n "$msg" ]]; then
+      printf '  CATATAN: %s\n' "$msg" >&2
+    fi
     if [[ -f "$txt_tmp" ]] && ae_valid_txt "$txt_tmp"; then
       printf '%s' "$txt_tmp"
       return 0
