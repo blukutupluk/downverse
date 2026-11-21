@@ -1,0 +1,19 @@
+{
+  "name": "api-key-manager",
+  "version": "1.0.0",
+  "description": "Local API key manager with auto-failover for OpenCode",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test tests/**/*.test.js",
+    "setup-opencode": "node bin/integrate-opencode.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
