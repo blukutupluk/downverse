@@ -8,10 +8,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { font-family: 'Inter', sans-serif; }
-    .status-badge { @apply px-2 py-0.5 text-xs font-medium rounded-full; }
-    .status-active { @apply bg-green-100 text-green-800; }
-    .status-cooldown { @apply bg-yellow-100 text-yellow-800; }
-    .status-disabled { @apply bg-red-100 text-red-800; }
+    .status-badge { padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 500; border-radius: 9999px; display: inline-block; }
+    .status-active { background-color: #dcfce7; color: #166534; }
+    .status-cooldown { background-color: #fef9c3; color: #854d0e; }
+    .status-disabled { background-color: #fee2e2; color: #991b1b; }
     .fade-in { animation: fadeIn 0.3s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
   </style>
@@ -267,12 +267,24 @@
     // Modal handling
     function openModal(key = null) {
       editingKeyId = key?.id || null;
+      const keyInput = document.getElementById('key-value');
       document.getElementById('modal-title').textContent = key ? 'Edit API Key' : 'Add API Key';
       document.getElementById('key-id').value = key?.id || '';
       document.getElementById('key-provider').value = key?.provider || '';
       document.getElementById('key-provider').disabled = !!key; // Can't change provider when editing
       document.getElementById('key-name').value = key?.name || '';
-      document.getElementById('key-value').value = key?.key || '';
+
+      if (key) {
+        // Editing: key value is masked server-side and cannot be changed via PUT
+        keyInput.value = '';
+        keyInput.required = false;
+        keyInput.placeholder = 'Kosongkan untuk tidak mengubah key';
+      } else {
+        keyInput.value = '';
+        keyInput.required = true;
+        keyInput.placeholder = 'Enter API key';
+      }
+
       document.getElementById('key-modal').classList.remove('hidden');
       document.getElementById('key-modal').classList.add('flex');
     }
@@ -283,6 +295,12 @@
       document.getElementById('key-form').reset();
       editingKeyId = null;
       document.getElementById('key-provider').disabled = false;
+      const keyInput = document.getElementById('key-value');
+      keyInput.required = true;
+      keyInput.placeholder = 'Enter API key';
+      keyInput.type = 'password';
+      document.getElementById('eye-open').classList.remove('hidden');
+      document.getElementById('eye-closed').classList.add('hidden');
     }
 
     function toggleKeyVisibility() {
@@ -339,8 +357,12 @@
       const name = document.getElementById('key-name').value;
       const keyValue = document.getElementById('key-value').value;
 
-      if (!provider || !keyValue) {
-        alert('Provider and API Key are required');
+      if (!provider) {
+        alert('Provider wajib dipilih');
+        return;
+      }
+      if (!id && !keyValue) {
+        alert('API Key wajib diisi');
         return;
       }
 
@@ -425,13 +447,13 @@
           <td class="px-4 py-3 text-sm text-gray-500">${key.lastUsed ? formatDate(key.lastUsed) : 'Never'}</td>
           <td class="px-4 py-3 text-right">
             <div class="flex items-center justify-end space-x-2">
-              <button onclick="toggleKeyStatus('${key.id}', '${key.status}')" class="text-xs px-2 py-1 ${key.status === 'active' ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'} rounded transition-colors">
+              <button data-action="toggle" data-id="${key.id}" data-status="${key.status}" class="text-xs px-2 py-1 ${key.status === 'active' ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'} rounded transition-colors">
                 ${key.status === 'active' ? 'Disable' : 'Enable'}
               </button>
-              <button onclick="openModal(${JSON.stringify(key).replace(/"/g, '"')})" class="text-xs px-2 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded transition-colors">
+              <button data-action="edit" data-id="${key.id}" class="text-xs px-2 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded transition-colors">
                 Edit
               </button>
-              <button onclick="deleteKey('${key.id}', '${key.name}')" class="text-xs px-2 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded transition-colors">
+              <button data-action="delete" data-id="${key.id}" data-name="${escapeAttr(key.name)}" class="text-xs px-2 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded transition-colors">
                 Delete
               </button>
             </div>
@@ -439,10 +461,21 @@
         </tr>
       `).join('');
 
-      // Make functions globally accessible for inline onclick
-      window.toggleKeyStatus = toggleKeyStatus;
-      window.openModal = openModal;
-      window.deleteKey = deleteKey;
+      // Event delegation for row action buttons
+      tbody.querySelectorAll('button[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.id;
+          const action = btn.dataset.action;
+          if (action === 'toggle') {
+            toggleKeyStatus(id, btn.dataset.status);
+          } else if (action === 'edit') {
+            const key = keys.find(k => k.id === id);
+            if (key) openModal(key);
+          } else if (action === 'delete') {
+            deleteKey(id, btn.dataset.name);
+          }
+        });
+      });
     }
 
     function renderStats(stats) {
@@ -609,6 +642,17 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    function escapeAttr(text) {
+      const map = {
+        '&': String.fromCharCode(38),
+        '<': String.fromCharCode(60),
+        '>': String.fromCharCode(62),
+        '"': String.fromCharCode(34),
+        "'": String.fromCharCode(39)
+      };
+      return String(text).replace(/[&<>"']/g, ch => map[ch]);
     }
   </script>
 </body>

@@ -6,6 +6,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node index.js",
+    "cli": "node bin/cli.js",
+    "doctor": "node bin/cli.js --doctor",
     "test": "node --test tests/**/*.test.js",
     "setup-opencode": "node bin/integrate-opencode.js"
   },
