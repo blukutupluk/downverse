@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Unit test modul audio_extractor dengan stub ffmpeg/ffprobe/proot_login.
-# Fixture per-file: baris pertama menentukan perilaku (VIDEO, NO_AUDIO,
-# SILENT, FAIL). Tidak menyentuh backend, model, atau SD card asli.
+# Unit test modul audio_extractor dengan stub ffmpeg/ffprobe/proot_login/python3.
+# Fixture per-file: baris pertama menentukan perilaku (VIDEO, NO_AUDIO, SILENT,
+# FAIL, QUOTA, SILENT_GEMINI). Key Gemini memakai file temp, bukan key asli.
+# Tidak menyentuh backend, model, jaringan, atau SD card asli.
 
 DL_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d /data/data/com.termux/files/usr/tmp/ae-test.XXXXXX)"
@@ -725,6 +726,73 @@ test_gemini_no_speech_bucket() {
   fi
 }
 
+# --- 28: key tersimpan yang dipakai ulang tetap di-chmod 600 ---
+test_gemini_reused_key_chmod_600() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out mode
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  printf 'stored-key-0644\n' > "$AE_GEMINI_KEY_FILE"
+  chmod 644 -- "$AE_GEMINI_KEY_FILE"
+  make_video gemmode.mp4 VIDEO >/dev/null
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  mode=$(stat -c '%a' "$AE_GEMINI_KEY_FILE" 2>/dev/null)
+  AE_INPUT_DIR="$old_input"
+  if [[ "$mode" == '600' ]] \
+    && [[ "$(<"$AE_GEMINI_KEY_FILE")" == 'stored-key-0644' ]] \
+    && [[ -s "$AUDIO_EXTRACTOR_ROOT/gemmode.txt" ]] \
+    && (( AE_TXT_OK == 1 && AE_FAIL == 0 )); then
+    ok test_gemini_reused_key_chmod_600
+  else
+    bad test_gemini_reused_key_chmod_600 "mode=$mode out=$(printf '%q' "$out")"
+  fi
+}
+
+# --- 29: key tersimpan hanya whitespace dianggap tidak ada ---
+test_gemini_whitespace_key_aborts() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  printf '   \n' > "$AE_GEMINI_KEY_FILE"
+  make_video gemspace.mp4 VIDEO >/dev/null
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ "$out" == *'API key Gemini tersimpan kosong'* ]] \
+    && [[ ! -s "$GEMINI_CALLS" ]] \
+    && [[ ! -e "$AUDIO_EXTRACTOR_ROOT/gemspace.mp3" && ! -e "$AUDIO_EXTRACTOR_ROOT/gemspace.txt" ]] \
+    && (( AE_TOTAL == 0 && AE_FAIL == 0 )); then
+    ok test_gemini_whitespace_key_aborts
+  else
+    bad test_gemini_whitespace_key_aborts "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
+# --- 30: Gemini job TXT saja dengan nama file berspasi ---
+test_gemini_txt_only_with_spaces() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  printf 'stored-key\n' > "$AE_GEMINI_KEY_FILE"
+  make_video 'gem txt space.mp4' VIDEO >/dev/null
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n3\n2\n\n\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ -s "$AUDIO_EXTRACTOR_ROOT/gem txt space.txt" ]] \
+    && [[ ! -e "$AUDIO_EXTRACTOR_ROOT/gem txt space.mp3" ]] \
+    && (( AE_TXT_OK == 1 && AE_MP3_OK == 0 && AE_FAIL == 0 )); then
+    ok test_gemini_txt_only_with_spaces
+  else
+    bad test_gemini_txt_only_with_spaces "out=$(printf '%q' "$out") counters=$(counters)"
+  fi
+}
+
 test_no_audio_stream
 test_no_speech_bucket
 test_skip_valid_output
@@ -752,6 +820,9 @@ test_gemini_missing_key_stops_before_upload
 test_gemini_quota_error_message
 test_gemini_batch_continues_on_quota
 test_gemini_no_speech_bucket
+test_gemini_reused_key_chmod_600
+test_gemini_whitespace_key_aborts
+test_gemini_txt_only_with_spaces
 
 if ((fails == 0)); then
   printf '\nSemua test lolos.\n'

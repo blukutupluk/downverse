@@ -1,6 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Audio Extractor + Transcriber: video → MP3 tervalidasi + transkripsi TXT lokal.
-# Ekstraksi memakai FFmpeg Termux; transkripsi memakai transcribe.py di PRoot.
+# Audio Extractor + Transcriber: video → MP3 tervalidasi + transkripsi TXT.
+# Ekstraksi memakai FFmpeg Termux; transkripsi memakai transcribe.py di PRoot
+# (lokal) atau transcribe_gemini.py dengan python3 Termux + key 0600 (Gemini).
 # Modul di-source oleh launcher, jangan aktifkan set -u.
 
 AE_MODULE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -321,7 +322,7 @@ _ae_ask_existing() {
 }
 
 _ae_prompt_engine() {
-  local choice key=""
+  local choice key="" stored="" key_dir="" key_tmp=""
   printf '\n%s\n' 'Mesin transkripsi: 1) Lokal  2) Gemini API' >&2
   printf 'Pilih mesin [1]: ' >&2
   IFS= read -r choice
@@ -334,18 +335,43 @@ _ae_prompt_engine() {
   printf '%s\n' 'API key Google AI Studio [Enter = key tersimpan]: ' >&2
   IFS= read -rs key
   printf '\n' >&2
+  # Spasi saja dianggap kosong: jangan pernah memakai key tak berguna.
+  if [[ -z "${key//[[:space:]]/}" ]]; then
+    key=""
+  fi
   if [[ -n "$key" ]]; then
-    mkdir -p -- "$(dirname -- "$AE_GEMINI_KEY_FILE")" || { unset key; return 1; }
-    if ! (umask 077; printf '%s\n' "$key" > "$AE_GEMINI_KEY_FILE"); then
+    key_dir=$(dirname -- "$AE_GEMINI_KEY_FILE")
+    if ! mkdir -p -- "$key_dir"; then
+      ui_error "Gagal membuat folder API key Gemini: $key_dir" >&2
+      unset key
+      return 1
+    fi
+    key_tmp="$AE_GEMINI_KEY_FILE.tmp.$$"
+    if ! (umask 077; printf '%s\n' "$key" > "$key_tmp") \
+      || ! chmod 600 -- "$key_tmp" \
+      || ! mv -f -- "$key_tmp" "$AE_GEMINI_KEY_FILE"; then
+      rm -f -- "$key_tmp" 2>/dev/null || :
       ui_error "Gagal menyimpan API key Gemini." >&2
       unset key
       return 1
     fi
-    chmod 600 -- "$AE_GEMINI_KEY_FILE" || { unset key; return 1; }
   elif [[ ! -s "$AE_GEMINI_KEY_FILE" ]]; then
     ui_error "Belum ada API key Gemini. Tempel key di prompt atau jalankan ulang menu 12." >&2
     unset key
     return 1
+  else
+    IFS= read -r stored < "$AE_GEMINI_KEY_FILE" || :
+    if [[ -z "${stored//[[:space:]]/}" ]]; then
+      ui_error "API key Gemini tersimpan kosong. Tempel key baru di prompt." >&2
+      unset key stored
+      return 1
+    fi
+    unset stored
+    if ! chmod 600 -- "$AE_GEMINI_KEY_FILE"; then
+      ui_error "Gagal mengamankan izin API key Gemini (0600)." >&2
+      unset key
+      return 1
+    fi
   fi
   unset key
   printf 'gemini'

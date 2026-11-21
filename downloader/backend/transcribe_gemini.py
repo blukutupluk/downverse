@@ -59,31 +59,59 @@ def load_key(path):
     return key
 
 
+def _as_text(value):
+    return value if isinstance(value, str) else ""
+
+
 def read_text_response(payload):
     if not isinstance(payload, dict):
         return ""
-    for item in payload.get("outputs") or []:
-        if isinstance(item, dict) and item.get("type") == "text" and item.get("text"):
-            return item["text"]
-    if payload.get("output_text"):
-        return payload["output_text"]
-    steps = payload.get("steps") or []
-    if steps and isinstance(steps[-1], dict):
-        content = steps[-1].get("content") or []
-        if content and isinstance(content[0], dict) and content[0].get("text"):
-            return content[0]["text"]
+    outputs = payload.get("outputs")
+    if isinstance(outputs, list):
+        for item in outputs:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = _as_text(item.get("text"))
+                if text:
+                    return text
+    text = _as_text(payload.get("output_text"))
+    if text:
+        return text
+    steps = payload.get("steps")
+    if isinstance(steps, list) and steps and isinstance(steps[-1], dict):
+        content = steps[-1].get("content")
+        if isinstance(content, list) and content and isinstance(content[0], dict):
+            text = _as_text(content[0].get("text"))
+            if text:
+                return text
     return ""
 
 
+def _normalized_marker(line):
+    value = line.strip().strip("*_`").strip().lower()
+    return value
+
+
+def _is_no_speech_line(line):
+    value = line.strip().strip("*_`").strip().rstrip(".!?,;:")
+    value = "_".join(value.upper().replace("-", " ").split())
+    return value == "NO_SPEECH"
+
+
 def clean_transcript(text):
-    lines = [line.strip() for line in (text or "").splitlines()]
+    lines = [line.strip() for line in _as_text(text).splitlines()]
     if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].startswith("```"):
         lines = lines[1:-1]
     lines = [line for line in lines if line]
     joined = "\n".join(lines).strip()
-    if joined.upper() == "NO_SPEECH":
+    if not joined:
+        return "empty", ""
+    if all(_is_no_speech_line(line) for line in lines):
         return "no_speech", ""
-    if not joined or all(line == MARKER for line in lines):
+    if any(_is_no_speech_line(line) for line in lines) and all(
+        _is_no_speech_line(line) or _normalized_marker(line) == MARKER for line in lines
+    ):
+        return "no_speech", ""
+    if all(_normalized_marker(line) == MARKER for line in lines):
         return "empty", ""
     return "ok", joined
 
@@ -112,16 +140,16 @@ def _http_error(status, body):
             "Kuota API Gemini habis. Jalankan ulang menu 12 dan tempel API key lain "
             "saat prompt muncul.",
         )
-    if status in (400, 401, 403) or "api_key_invalid" in low or "invalid api key" in low:
-        return GeminiError(
-            "INVALID_KEY",
-            "API key Google AI Studio tidak valid. Periksa key lalu jalankan ulang menu 12.",
-        )
     if "model" in low:
         return GeminiError(
             "MODEL",
             "Model Gemini tidak tersedia untuk key ini. Sunting konstanta MODEL di "
             "downloader/backend/transcribe_gemini.py (mis. gemini-3.8-flash) lalu jalankan ulang.",
+        )
+    if status in (400, 401, 403) or "api_key_invalid" in low or "invalid api key" in low:
+        return GeminiError(
+            "INVALID_KEY",
+            "API key Google AI Studio tidak valid. Periksa key lalu jalankan ulang menu 12.",
         )
     return GeminiError(
         "API_ERROR",
@@ -160,7 +188,14 @@ def _request(url, payload, key, opener, method="POST", extra_headers=None, raw=N
         body = response.read()
         if status and status >= 400:
             raise _http_error(status, body)
-        parsed = json.loads(body.decode("utf-8")) if body else {}
+        try:
+            parsed = json.loads(body.decode("utf-8")) if body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise GeminiError(
+                "BAD_RESPONSE",
+                "Gemini mengembalikan respons yang tidak bisa dibaca (bukan JSON). "
+                "Periksa koneksi/proxy lalu jalankan ulang.",
+            )
     finally:
         close = getattr(response, "close", None)
         if close is not None:
@@ -201,25 +236,27 @@ def upload_file(audio_path, key, opener):
         },
         raw=raw,
     )
-    file_data = info.get("file") or {}
-    uri = file_data.get("uri")
-    if not uri:
-        raise GeminiError("BAD_RESPONSE", "Upload Gemini selesai tetapi URI file tidak ada.")
-    return uri, file_data.get("name")
+    file_data = info.get("file")
+    if not isinstance(file_data, dict):
+        file_data = {}
+    return _as_text(file_data.get("uri")), _as_text(file_data.get("name"))
 
 
 def _delete_file(name, key, opener):
     if not name:
-        return
+        return ""
     try:
         _request(BASE_URL + "/v1beta/" + name, None, key, opener, method="DELETE")
-    except GeminiError:
-        pass
+    except Exception:
+        return "File audio sementara di Gemini mungkin belum terhapus."
+    return ""
 
 
 def transcribe(audio_path, key_path, out_txt, opener=None):
     key = ""
     uploaded_name = ""
+    delete_note = ""
+    result = _result(reason="ERROR", message="Transkripsi tidak selesai.")
     try:
         key = load_key(key_path)
         if os.path.getsize(audio_path) < INLINE_LIMIT_BYTES:
@@ -231,6 +268,8 @@ def transcribe(audio_path, key_path, out_txt, opener=None):
                 }
         else:
             uri, uploaded_name = upload_file(audio_path, key, opener)
+            if not uri:
+                raise GeminiError("BAD_RESPONSE", "Upload Gemini selesai tetapi URI file tidak ada.")
             audio_input = {"type": "audio", "uri": uri, "mime_type": MIME}
 
         body, _ = _request(
@@ -241,25 +280,46 @@ def transcribe(audio_path, key_path, out_txt, opener=None):
         )
         status, text = clean_transcript(read_text_response(body))
         if status == "no_speech":
-            return _result(reason="NO_SPEECH", message="Tidak ada ucapan yang jelas.")
-        if status == "empty":
-            return _result(reason="BAD_RESPONSE", message="Gemini mengembalikan teks kosong atau placeholder.")
-        with open(out_txt, "w", encoding="utf-8") as handle:
-            handle.write(text + "\n")
-        return _result(
-            ok=True,
-            language="",
-            duration=0.0,
-            segments=len(text.splitlines()),
-            text_chars=len(text),
-        )
+            result = _result(
+                reason="NO_SPEECH",
+                message="Tidak ada ucapan yang jelas.",
+                language="",
+                duration=0.0,
+                segments=0,
+                text_chars=0,
+            )
+        elif status == "empty":
+            result = _result(
+                reason="BAD_RESPONSE",
+                message="Gemini mengembalikan teks kosong atau placeholder.",
+            )
+        else:
+            out_path = os.path.abspath(os.path.expanduser(out_txt))
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            with open(out_path, "w", encoding="utf-8") as handle:
+                handle.write(text + "\n")
+            result = _result(
+                ok=True,
+                language="",
+                duration=0.0,
+                segments=len(text.splitlines()),
+                text_chars=len(text),
+            )
     except GeminiError as exc:
-        return _result(reason=exc.reason, message=exc.message)
+        result = _result(reason=exc.reason, message=exc.message)
     except OSError as exc:
-        return _result(reason="IO", message="Gagal membaca atau menulis file: %s" % exc)
+        result = _result(reason="IO", message="Gagal membaca atau menulis file: %s" % exc)
+    except Exception as exc:  # kontrak: selalu satu baris JSON, jangan traceback
+        result = _result(
+            reason="ERROR",
+            message="Terjadi galat tak terduga: %s" % (str(exc).strip() or exc.__class__.__name__),
+        )
     finally:
         if uploaded_name:
-            _delete_file(uploaded_name, key, opener)
+            delete_note = _delete_file(uploaded_name, key, opener)
+    if delete_note:
+        result["message"] = (str(result.get("message", "")).strip() + " " + delete_note).strip()
+    return result
 
 
 def main(argv=None, opener=None):
@@ -268,7 +328,13 @@ def main(argv=None, opener=None):
     parser.add_argument("--key-file", required=True)
     parser.add_argument("--out-txt", required=True)
     args = parser.parse_args(argv)
-    result = transcribe(args.audio, args.key_file, args.out_txt, opener=opener)
+    try:
+        result = transcribe(args.audio, args.key_file, args.out_txt, opener=opener)
+    except Exception as exc:  # jaga kontrak satu baris JSON sampai proses selesai
+        result = _result(
+            reason="ERROR",
+            message="Terjadi galat tak terduga: %s" % (str(exc).strip() or exc.__class__.__name__),
+        )
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result.get("ok") or result.get("reason") == "NO_SPEECH" else 1
 

@@ -194,6 +194,100 @@ class GeminiBackendTests(unittest.TestCase):
 
         self.assertEqual(header(op.calls[0], "x-goog-api-key"), "ai-studio-key-xyz")
 
+    def test_non_json_response_returns_bad_response(self):
+        op = self.opener(FakeResponse(b"<html>captive portal</html>"))
+        payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["reason"], "BAD_RESPONSE")
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_malformed_response_shape_returns_bad_response(self):
+        payloads = (
+            {"outputs": [{"type": "text", "text": {"nested": 1}}]},
+            {"steps": {"content": [{"type": "text", "text": "x"}]}},
+        )
+        for body in payloads:
+            with self.subTest(body=body):
+                op = self.opener(FakeResponse(body))
+                payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+                self.assertFalse(payload["ok"])
+                self.assertEqual(payload["reason"], "BAD_RESPONSE")
+                self.assertFalse(os.path.exists(self.out))
+
+    def test_main_prints_one_json_line_on_bad_response(self):
+        argv = [
+            "transcribe_gemini.py",
+            "--audio", self.audio,
+            "--key-file", self.key,
+            "--out-txt", self.out,
+        ]
+        stdout = io.StringIO()
+        with patch.object(sys, "argv", argv), contextlib.redirect_stdout(stdout):
+            code = g.main(opener=self.opener(FakeResponse(b"<html>proxy</html>")))
+
+        lines = stdout.getvalue().splitlines()
+        self.assertEqual(code, 1)
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(json.loads(lines[0])["reason"], "BAD_RESPONSE")
+
+    def test_delete_failure_preserves_transcript(self):
+        failures = (
+            FakeResponse(b"<html>bad gateway</html>"),
+            URLError("no internet during delete"),
+        )
+        for delete_response in failures:
+            with self.subTest(delete=delete_response):
+                if os.path.exists(self.out):
+                    os.remove(self.out)
+                with patch.object(g, "INLINE_LIMIT_BYTES", 4):
+                    op = self.opener(
+                        FakeResponse({}, headers={"x-goog-upload-url": "https://upload.local/session"}),
+                        FakeResponse({"file": {"uri": "https://files.local/abc", "name": "files/abc"}}),
+                        FakeResponse(self.text_payload),
+                        delete_response,
+                    )
+                    payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+
+                self.assertTrue(payload["ok"])
+                self.assertTrue(os.path.exists(self.out))
+                self.assertIn("hapus", payload.get("message", "").lower())
+
+    def test_upload_without_uri_still_deletes_file(self):
+        with patch.object(g, "INLINE_LIMIT_BYTES", 4):
+            op = self.opener(
+                FakeResponse({}, headers={"x-goog-upload-url": "https://upload.local/session"}),
+                FakeResponse({"file": {"name": "files/abc"}}),
+                FakeResponse({}),
+            )
+            payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+
+        self.assertEqual(payload["reason"], "BAD_RESPONSE")
+        self.assertTrue(any(call.method == "DELETE" for call in op.calls))
+
+    def test_no_speech_variants_write_nothing(self):
+        variants = ("NO_SPEECH.", "**NO_SPEECH**", "NO_SPEECH\n[tidak terdengar]")
+        for text in variants:
+            with self.subTest(text=text):
+                if os.path.exists(self.out):
+                    os.remove(self.out)
+                op = self.opener(FakeResponse({"outputs": [{"type": "text", "text": text}]}))
+                payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+                self.assertEqual(payload["reason"], "NO_SPEECH")
+                self.assertFalse(os.path.exists(self.out))
+
+    def test_marker_is_case_insensitive_but_mixed_text_is_valid(self):
+        op = self.opener(FakeResponse({"outputs": [{"type": "text", "text": "[Tidak terdengar]"}]}))
+        payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+        self.assertEqual(payload["reason"], "BAD_RESPONSE")
+        self.assertFalse(os.path.exists(self.out))
+
+        op = self.opener(FakeResponse({"outputs": [{"type": "text", "text": "Halo dunia.\n[tidak terdengar]"}]}))
+        payload = g.transcribe(self.audio, self.key, self.out, opener=op)
+        self.assertTrue(payload["ok"])
+        with open(self.out, encoding="utf-8") as handle:
+            self.assertIn("Halo dunia.", handle.read())
+
     def test_main_prints_single_json_line(self):
         argv = [
             "transcribe_gemini.py",
