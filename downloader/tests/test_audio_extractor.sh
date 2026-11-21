@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Unit test modul audio_extractor dengan stub ffmpeg/ffprobe/proot_login/python3.
-# Fixture per-file: baris pertama menentukan perilaku (VIDEO, NO_AUDIO, SILENT,
+# Unit test modul audio_extractor dengan stub ffmpeg/ffprobe/python3.
+# Fixture per-file: baris pertama menentukan perilaku (VIDEO, NO_AUDIO,
 # FAIL, QUOTA, SILENT_GEMINI). Key Gemini memakai file temp, bukan key asli.
 # Tidak menyentuh backend, model, jaringan, atau SD card asli.
 
@@ -11,18 +11,20 @@ trap 'rm -rf -- "$TMP"' EXIT
 AUDIO_EXTRACTOR_ROOT="$TMP/out"
 OUTPUT_ROOT="$TMP/output"
 LOG_DIR="$TMP/logs"
-PROOT_PYTHON=/venv/python
 FFMPEG_CALLS="$TMP/ffmpeg.calls"
-PROOT_CALLS="$TMP/proot.calls"
 GEMINI_CALLS="$TMP/gemini.calls"
 GEMINI_KEY_USED="$TMP/gemini.key.used"
 AE_GEMINI_KEY_FILE="$TMP/gemini/gemini.key"
 mkdir -p "$AUDIO_EXTRACTOR_ROOT" "$OUTPUT_ROOT" "$LOG_DIR" \
   "$TMP/in" "$TMP/gemini" "$AUDIO_EXTRACTOR_ROOT/temp"
 : > "$FFMPEG_CALLS"
-: > "$PROOT_CALLS"
 : > "$GEMINI_CALLS"
 : > "$GEMINI_KEY_USED"
+
+# Key tersimpan default: engine Gemini tidak boleh meminta key lagi.
+DEFAULT_KEY='stored-key-default'
+printf '%s\n' "$DEFAULT_KEY" > "$AE_GEMINI_KEY_FILE"
+chmod 600 -- "$AE_GEMINI_KEY_FILE"
 
 # --- stub ---
 ffprobe() {
@@ -74,33 +76,6 @@ ffmpeg() {
   else
     printf 'AUDIO_DATA\n' > "$target"
   fi
-  return 0
-}
-
-proot_login() {
-  printf '%s\n' "$*" >> "$PROOT_CALLS"
-  local audio="" out="" model="" script="" key first=""
-  while (($#)); do
-    key="$1"
-    case "$key" in
-      --audio) audio="$2"; shift 2 ;;
-      --out-txt) out="$2"; shift 2 ;;
-      --model-dir) model="$2"; shift 2 ;;
-      --model-size|--language) shift 2 ;;
-      --timestamps) shift ;;
-      --) shift ;;
-      -*) shift ;;
-      *) script="$1"; shift ;;
-    esac
-  done
-  [[ "$script" == *transcribe.py && -n "$out" ]] || return 1
-  if [[ -n "$audio" && -f "$audio" ]]; then IFS= read -r first < "$audio" || :; fi
-  if [[ "$first" == "SILENT" ]]; then
-    printf '%s\n' '{"ok": false, "reason": "NO_SPEECH", "language": "id", "duration": 2.0, "segments": 0, "text_chars": 0, "model": "base"}'
-    return 0
-  fi
-  printf '%s\n' 'Halo dunia, ini contoh transkripsi.' '[tidak terdengar]' > "$out" || return 1
-  printf '%s\n' '{"ok": true, "language": "id", "duration": 2.0, "segments": 2, "text_chars": 55, "model": "base"}'
   return 0
 }
 
@@ -165,7 +140,6 @@ counters() { printf '%s/%s/%s/%s/%s/%s' "$AE_TOTAL" "$AE_MP3_OK" "$AE_TXT_OK" "$
 reset_state() {
   if declare -F ae_reset_state >/dev/null 2>&1; then ae_reset_state; fi
   : > "$FFMPEG_CALLS"
-  : > "$PROOT_CALLS"
   : > "$GEMINI_CALLS"
   : > "$GEMINI_KEY_USED"
 }
@@ -193,23 +167,7 @@ test_no_audio_stream() {
   fi
 }
 
-# --- 2: audio hening masuk bucket TANPA_UCAPAN ---
-test_no_speech_bucket() {
-  reset_state
-  local v out
-  v=$(make_video silent.mp4 SILENT)
-  run_ae ae_process "$v" both no
-  out=$(<"$TMP/ae.out")
-  if (( AE_MP3_OK == 1 && AE_TXT_OK == 0 && AE_NO_SPEECH == 1 && AE_FAIL == 0 )) \
-    && [[ -s "$AUDIO_EXTRACTOR_ROOT/silent.mp3" && ! -e "$AUDIO_EXTRACTOR_ROOT/silent.txt" ]] \
-    && [[ "$out" == *'Tidak ada ucapan'* ]]; then
-    ok test_no_speech_bucket
-  else
-    bad test_no_speech_bucket "counters=$(counters) out=$(printf '%q' "$out")"
-  fi
-}
-
-# --- 3: output valid dilewati tanpa memanggil backend ---
+# --- 2: output valid dilewati tanpa memanggil backend ---
 test_skip_valid_output() {
   reset_state
   local v out
@@ -223,7 +181,7 @@ test_skip_valid_output() {
   if (( AE_SKIP == 1 && AE_MP3_OK == 0 && AE_TXT_OK == 0 && AE_FAIL == 0 )) \
     && cmp -s "$TMP/skip.mp3.before" "$AUDIO_EXTRACTOR_ROOT/skip.mp3" \
     && cmp -s "$TMP/skip.txt.before" "$AUDIO_EXTRACTOR_ROOT/skip.txt" \
-    && [[ ! -s "$FFMPEG_CALLS" && ! -s "$PROOT_CALLS" ]]; then
+    && [[ ! -s "$FFMPEG_CALLS" && ! -s "$GEMINI_CALLS" ]]; then
     ok test_skip_valid_output
   else
     bad test_skip_valid_output "counters=$(counters) out=$(printf '%q' "$out")"
@@ -353,22 +311,7 @@ EOF
   fi
 }
 
-# --- 10: bahasa hasil deteksi ditampilkan per file ---
-test_detected_language_displayed() {
-  reset_state
-  local v out
-  v=$(make_video lang.mp4 VIDEO)
-  run_ae ae_process "$v" both no
-  out=$(<"$TMP/ae.out")
-  if [[ "$out" == *'bahasa=id'* ]] \
-    && (( AE_TXT_OK == 1 && AE_FAIL == 0 )); then
-    ok test_detected_language_displayed
-  else
-    bad test_detected_language_displayed "counters=$(counters) out=$(printf '%q' "$out")"
-  fi
-}
-
-# --- 11: file rusak dibedakan dari file tanpa stream audio ---
+# --- 10: file rusak dibedakan dari file tanpa stream audio ---
 test_corrupt_video_message() {
   reset_state
   local v out
@@ -579,7 +522,7 @@ test_gemini_new_key_saved_and_used() {
   rm -f -- "$AE_GEMINI_KEY_FILE" "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
   make_video gemnew.mp4 VIDEO >/dev/null
   AE_INPUT_DIR="$TMP/in"
-  printf '1\n1\n2\n%s\n\n' "$newkey" > "$TMP/stdin"
+  printf '1\n1\n1\n%s\n\n' "$newkey" > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   call=$(<"$GEMINI_CALLS")
@@ -597,8 +540,8 @@ test_gemini_new_key_saved_and_used() {
   fi
 }
 
-# --- 22: Enter memakai key tersimpan ---
-test_gemini_enter_uses_stored_key() {
+# --- 22: key tersimpan dipakai tanpa prompt ---
+test_gemini_stored_key_no_prompt() {
   reset_state
   local old_input="$AE_INPUT_DIR" out before='stored-key-old'
   rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
@@ -606,17 +549,18 @@ test_gemini_enter_uses_stored_key() {
   chmod 600 -- "$AE_GEMINI_KEY_FILE"
   make_video gemold.mp4 VIDEO >/dev/null
   AE_INPUT_DIR="$TMP/in"
-  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  printf '1\n1\n1\n\n' > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   AE_INPUT_DIR="$old_input"
   if [[ "$(<"$AE_GEMINI_KEY_FILE")" == "$before" ]] \
     && [[ "$(<"$GEMINI_KEY_USED")" == "$before" ]] \
+    && [[ "$out" != *'API key Google'* && "$out" != *'bahasa='* ]] \
     && [[ -s "$AUDIO_EXTRACTOR_ROOT/gemold.txt" ]] \
     && (( AE_TXT_OK == 1 && AE_FAIL == 0 )); then
-    ok test_gemini_enter_uses_stored_key
+    ok test_gemini_stored_key_no_prompt
   else
-    bad test_gemini_enter_uses_stored_key "used=$(<"$GEMINI_KEY_USED") out=$(printf '%q' "$out")"
+    bad test_gemini_stored_key_no_prompt "used=$(<"$GEMINI_KEY_USED") out=$(printf '%q' "$out")"
   fi
 }
 
@@ -641,6 +585,29 @@ test_gemini_key_replacement() {
   fi
 }
 
+# --- 23b: ganti key dengan input kosong membatalkan, key lama aman ---
+test_gemini_replace_cancel_preserves_key() {
+  reset_state
+  local old_input="$AE_INPUT_DIR" out before='old-key-cancel'
+  rm -f -- "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
+  printf '%s\n' "$before" > "$AE_GEMINI_KEY_FILE"
+  chmod 600 -- "$AE_GEMINI_KEY_FILE"
+  make_video gemcancel.mp4 VIDEO >/dev/null
+  AE_INPUT_DIR="$TMP/in"
+  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
+  out=$(<"$TMP/ae.out")
+  AE_INPUT_DIR="$old_input"
+  if [[ "$(<"$AE_GEMINI_KEY_FILE")" == "$before" ]] \
+    && [[ "$out" == *'dibatalkan'* ]] \
+    && [[ ! -s "$GEMINI_CALLS" ]] \
+    && (( AE_TOTAL == 0 && AE_FAIL == 0 )); then
+    ok test_gemini_replace_cancel_preserves_key
+  else
+    bad test_gemini_replace_cancel_preserves_key "key=$(<"$AE_GEMINI_KEY_FILE") counters=$(counters) calls=$(printf '%q' "$(<"$GEMINI_CALLS")") out=$(printf '%q' "$out")"
+  fi
+}
+
 # --- 24: tanpa key tersimpan, Gemini tidak dipanggil ---
 test_gemini_missing_key_stops_before_upload() {
   reset_state
@@ -648,7 +615,7 @@ test_gemini_missing_key_stops_before_upload() {
   rm -f -- "$AE_GEMINI_KEY_FILE" "$TMP/in"/* "$AUDIO_EXTRACTOR_ROOT"/*.mp3 "$AUDIO_EXTRACTOR_ROOT"/*.txt 2>/dev/null
   make_video gemnokey.mp4 VIDEO >/dev/null
   AE_INPUT_DIR="$TMP/in"
-  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  printf '1\n1\n1\n\n' > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   AE_INPUT_DIR="$old_input"
@@ -670,7 +637,7 @@ test_gemini_quota_error_message() {
   printf 'stored-key\n' > "$AE_GEMINI_KEY_FILE"
   make_video gemquota.mp4 QUOTA >/dev/null
   AE_INPUT_DIR="$TMP/in"
-  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  printf '1\n1\n1\n\n' > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   low="${out,,}"
@@ -694,7 +661,7 @@ test_gemini_batch_continues_on_quota() {
   printf 'VIDEO\n' > "$dir/aa_good.mp4"
   printf 'QUOTA\n' > "$dir/bb_quota.mp4"
   printf 'VIDEO\n' > "$dir/cc_good.mp4"
-  printf '2\n1\n2\n\n%s\nn\n' "$dir" > "$TMP/stdin"
+  printf '2\n1\n1\n%s\nn\n' "$dir" > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   if [[ "$out" == *'[1/3] aa_good.mp4'* && "$out" == *'[2/3] bb_quota.mp4'* \
@@ -717,7 +684,7 @@ test_gemini_no_speech_bucket() {
   printf 'stored-key\n' > "$AE_GEMINI_KEY_FILE"
   make_video gemsilent.mp4 SILENT_GEMINI >/dev/null
   AE_INPUT_DIR="$TMP/in"
-  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  printf '1\n1\n1\n\n' > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   AE_INPUT_DIR="$old_input"
@@ -739,12 +706,13 @@ test_gemini_reused_key_chmod_600() {
   chmod 644 -- "$AE_GEMINI_KEY_FILE"
   make_video gemmode.mp4 VIDEO >/dev/null
   AE_INPUT_DIR="$TMP/in"
-  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  printf '1\n1\n1\n\n' > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   mode=$(stat -c '%a' "$AE_GEMINI_KEY_FILE" 2>/dev/null)
   AE_INPUT_DIR="$old_input"
   if [[ "$mode" == '600' ]] \
+    && [[ "$out" != *'API key Google'* ]] \
     && [[ "$(<"$AE_GEMINI_KEY_FILE")" == 'stored-key-0644' ]] \
     && [[ -s "$AUDIO_EXTRACTOR_ROOT/gemmode.txt" ]] \
     && (( AE_TXT_OK == 1 && AE_FAIL == 0 )); then
@@ -762,7 +730,7 @@ test_gemini_whitespace_key_aborts() {
   printf '   \n' > "$AE_GEMINI_KEY_FILE"
   make_video gemspace.mp4 VIDEO >/dev/null
   AE_INPUT_DIR="$TMP/in"
-  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  printf '1\n1\n1\n\n' > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   AE_INPUT_DIR="$old_input"
@@ -784,7 +752,7 @@ test_gemini_txt_only_with_spaces() {
   printf 'stored-key\n' > "$AE_GEMINI_KEY_FILE"
   make_video 'gem txt space.mp4' VIDEO >/dev/null
   AE_INPUT_DIR="$TMP/in"
-  printf '1\n3\n2\n\n\n' > "$TMP/stdin"
+  printf '1\n3\n1\n\n' > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   AE_INPUT_DIR="$old_input"
@@ -805,7 +773,7 @@ test_gemini_delete_note_surfaced() {
   printf 'stored-key\n' > "$AE_GEMINI_KEY_FILE"
   make_video gemnote.mp4 NOTE >/dev/null
   AE_INPUT_DIR="$TMP/in"
-  printf '1\n1\n2\n\n\n' > "$TMP/stdin"
+  printf '1\n1\n1\n\n' > "$TMP/stdin"
   module_audio_extractor < "$TMP/stdin" > "$TMP/ae.out" 2>&1
   out=$(<"$TMP/ae.out")
   AE_INPUT_DIR="$old_input"
@@ -819,7 +787,6 @@ test_gemini_delete_note_surfaced() {
 }
 
 test_no_audio_stream
-test_no_speech_bucket
 test_skip_valid_output
 test_invalid_output_not_overwritten
 test_reprocess_backup
@@ -827,7 +794,6 @@ test_filename_with_spaces
 test_batch_continue_on_failure
 test_temp_cleanup
 test_ask_existing_stdout_contract
-test_detected_language_displayed
 test_corrupt_video_message
 test_single_autopick_one_video
 test_single_list_default_choice
@@ -839,8 +805,9 @@ test_single_invalid_choice
 test_single_leading_zero_choice
 test_mp3_job_skips_engine_prompt
 test_gemini_new_key_saved_and_used
-test_gemini_enter_uses_stored_key
+test_gemini_stored_key_no_prompt
 test_gemini_key_replacement
+test_gemini_replace_cancel_preserves_key
 test_gemini_missing_key_stops_before_upload
 test_gemini_quota_error_message
 test_gemini_batch_continues_on_quota

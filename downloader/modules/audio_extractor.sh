@@ -1,16 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Audio Extractor + Transcriber: video → MP3 tervalidasi + transkripsi TXT.
-# Ekstraksi memakai FFmpeg Termux; transkripsi memakai transcribe.py di PRoot
-# (lokal) atau transcribe_gemini.py dengan python3 Termux + key 0600 (Gemini).
-# Modul di-source oleh launcher, jangan aktifkan set -u.
+# Ekstraksi memakai FFmpeg Termux; transkripsi memakai transcribe_gemini.py
+# dengan python3 Termux + key 0600. Modul di-source oleh launcher, jangan
+# aktifkan set -u.
 
 AE_MODULE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_ROOT="${AUDIO_EXTRACTOR_ROOT:-${OUTPUT_ROOT:-/storage/7544-8C33/output}/audio-extractor}"
 TEMP_ROOT="$OUT_ROOT/temp"
-MODEL_DIR="$OUT_ROOT/models/faster-whisper-base"
 AE_LOG_DIR="${LOG_DIR:-$AE_MODULE_ROOT/logs}"
 AE_INPUT_DIR="${OUTPUT_ROOT:-/storage/7544-8C33/output}/input"
-AE_TRANSCRIBE_SRC="$AE_MODULE_ROOT/backend/transcribe.py"
 AE_GEMINI_SRC="$AE_MODULE_ROOT/backend/transcribe_gemini.py"
 AE_GEMINI_KEY_FILE="${AE_GEMINI_KEY_FILE:-$HOME/.config/media-downloader/gemini.key}"
 
@@ -321,18 +319,40 @@ _ae_ask_existing() {
   esac
 }
 
-_ae_prompt_engine() {
-  local choice key="" stored="" key_dir="" key_tmp=""
-  printf '\n%s\n' 'Mesin transkripsi: 1) Lokal  2) Gemini API' >&2
-  printf 'Pilih mesin [1]: ' >&2
-  IFS= read -r choice
-  [[ -z "$choice" ]] && choice=1
-  case "$choice" in
-    1) printf 'local'; return 0 ;;
-    2) ;;
-    *) ui_error "Pilihan mesin tidak valid: $choice" >&2; return 1 ;;
-  esac
-  printf '%s\n' 'API key Google AI Studio [Enter = key tersimpan]: ' >&2
+_ae_stored_key_usable() {
+  local key
+  [[ -f "$AE_GEMINI_KEY_FILE" && -r "$AE_GEMINI_KEY_FILE" ]] || return 1
+  key=$(<"$AE_GEMINI_KEY_FILE") || return 1
+  [[ -n "${key//[[:space:]]/}" ]]
+}
+
+_ae_save_key() {
+  local key="$1" key_dir key_tmp
+  key_dir=$(dirname -- "$AE_GEMINI_KEY_FILE")
+  if ! mkdir -p -- "$key_dir"; then
+    ui_error "Gagal membuat folder API key Gemini: $key_dir" >&2
+    return 1
+  fi
+  if [[ -d "$AE_GEMINI_KEY_FILE" ]]; then
+    ui_error "Path API key Gemini adalah folder, bukan file: $AE_GEMINI_KEY_FILE" >&2
+    return 1
+  fi
+  if ! key_tmp=$(mktemp "$AE_GEMINI_KEY_FILE.tmp.XXXXXX"); then
+    ui_error "Gagal membuat file sementara API key Gemini." >&2
+    return 1
+  fi
+  if ! (umask 077; printf '%s\n' "$key" > "$key_tmp") \
+    || ! chmod 600 -- "$key_tmp" \
+    || ! mv -f -- "$key_tmp" "$AE_GEMINI_KEY_FILE"; then
+    rm -f -- "$key_tmp" 2>/dev/null || :
+    ui_error "Gagal menyimpan API key Gemini." >&2
+    return 1
+  fi
+}
+
+_ae_prompt_new_key() {
+  local key=""
+  printf '%s\n' 'API key Google AI Studio: ' >&2
   IFS= read -rs key
   printf '\n' >&2
   # Spasi saja dianggap kosong: jangan pernah memakai key tak berguna.
@@ -340,91 +360,78 @@ _ae_prompt_engine() {
     key=""
   fi
   if [[ -n "$key" ]]; then
-    key_dir=$(dirname -- "$AE_GEMINI_KEY_FILE")
-    if ! mkdir -p -- "$key_dir"; then
-      ui_error "Gagal membuat folder API key Gemini: $key_dir" >&2
-      unset key
-      return 1
-    fi
-    if [[ -d "$AE_GEMINI_KEY_FILE" ]]; then
-      ui_error "Path API key Gemini adalah folder, bukan file: $AE_GEMINI_KEY_FILE" >&2
-      unset key
-      return 1
-    fi
-    if ! key_tmp=$(mktemp "$AE_GEMINI_KEY_FILE.tmp.XXXXXX"); then
-      ui_error "Gagal membuat file sementara API key Gemini." >&2
-      unset key
-      return 1
-    fi
-    if ! (umask 077; printf '%s\n' "$key" > "$key_tmp") \
-      || ! chmod 600 -- "$key_tmp" \
-      || ! mv -f -- "$key_tmp" "$AE_GEMINI_KEY_FILE"; then
-      rm -f -- "$key_tmp" 2>/dev/null || :
-      ui_error "Gagal menyimpan API key Gemini." >&2
-      unset key
-      return 1
-    fi
-  elif [[ ! -s "$AE_GEMINI_KEY_FILE" ]]; then
-    ui_error "Belum ada API key Gemini. Tempel key di prompt atau jalankan ulang menu 12." >&2
-    unset key
-    return 1
-  else
-    stored=$(<"$AE_GEMINI_KEY_FILE") || :
-    if [[ -z "${stored//[[:space:]]/}" ]]; then
-      ui_error "API key Gemini tersimpan kosong. Tempel key baru di prompt." >&2
-      unset key stored
-      return 1
-    fi
-    unset stored
-    if ! chmod 600 -- "$AE_GEMINI_KEY_FILE"; then
-      ui_error "Gagal mengamankan izin API key Gemini (0600)." >&2
-      unset key
-      return 1
-    fi
+    _ae_save_key "$key"
+    return
   fi
-  unset key
+  if _ae_stored_key_usable; then
+    chmod 600 -- "$AE_GEMINI_KEY_FILE" 2>/dev/null || :
+    return 0
+  fi
+  if [[ -s "$AE_GEMINI_KEY_FILE" ]]; then
+    ui_error "API key Gemini tersimpan kosong. Tempel key baru di prompt." >&2
+  else
+    ui_error "Belum ada API key Gemini. Tempel key di prompt atau jalankan ulang menu 12." >&2
+  fi
+  return 1
+}
+
+_ae_prompt_engine() {
+  local choice key=""
+  printf '\n%s\n' 'Mesin transkripsi: 1) Gemini API  2) Gemini API (ganti key)' >&2
+  printf 'Pilih mesin [1]: ' >&2
+  IFS= read -r choice
+  [[ -z "$choice" ]] && choice=1
+  case "$choice" in
+    1)
+      if _ae_stored_key_usable; then
+        if ! chmod 600 -- "$AE_GEMINI_KEY_FILE"; then
+          ui_error "Gagal mengamankan izin API key Gemini (0600)." >&2
+          return 1
+        fi
+        printf '%s\n' 'Memakai API key Gemini tersimpan.' >&2
+        printf 'gemini'
+        return 0
+      fi
+      _ae_prompt_new_key || return 1
+      ;;
+    2)
+      printf '%s\n' 'API key Google AI Studio baru [Enter = batal]: ' >&2
+      IFS= read -rs key
+      printf '\n' >&2
+      if [[ -z "${key//[[:space:]]/}" ]]; then
+        ui_error "Ganti key dibatalkan; key lama tidak diubah." >&2
+        unset key
+        return 1
+      fi
+      _ae_save_key "$key" || { unset key; return 1; }
+      unset key
+      ;;
+    *)
+      ui_error "Pilihan mesin tidak valid: $choice" >&2
+      return 1
+      ;;
+  esac
   printf 'gemini'
 }
 
 _ae_transcribe() {
-  local engine="$1" scratch="$2" audio="$3" txt_tmp="$4" json raw rc ok_val reason msg language
-  if [[ "$engine" == "gemini" ]]; then
-    if [[ ! -f "$AE_GEMINI_SRC" ]]; then
-      ui_error "Backend transcribe_gemini.py tidak ditemukan: $AE_GEMINI_SRC"
-      log_error "AE backend missing $AE_GEMINI_SRC"
-      return 2
-    fi
-  else
-    if [[ ! -f "$AE_TRANSCRIBE_SRC" ]]; then
-      ui_error "Backend transcribe.py tidak ditemukan: $AE_TRANSCRIBE_SRC"
-      log_error "AE backend missing $AE_TRANSCRIBE_SRC"
-      return 2
-    fi
-    if ! cp -- "$AE_TRANSCRIBE_SRC" "$scratch/transcribe.py"; then
-      ui_error "Gagal menyalin backend transcribe.py ke folder temp."
-      return 2
-    fi
+  local engine="$1" scratch="$2" audio="$3" txt_tmp="$4" json raw rc ok_val reason msg
+  if [[ "$engine" != "gemini" ]]; then
+    ui_error "Mesin transkripsi tidak didukung: $engine"
+    log_error "AE unsupported engine=$engine"
+    return 2
   fi
-  if [[ "$engine" == "gemini" ]]; then
-    # Key dibaca backend dari file 0600; jangan pernah lewat argv/env.
-    raw=$(python3 "$AE_GEMINI_SRC" --audio "$audio" \
-      --key-file "$AE_GEMINI_KEY_FILE" --out-txt "$txt_tmp" \
-      2>"$scratch/stderr.log")
-  else
-    raw=$(proot_login "$PROOT_PYTHON" "$scratch/transcribe.py" \
-      --audio "$audio" --out-txt "$txt_tmp" --model-dir "$MODEL_DIR" \
-      2>"$scratch/stderr.log")
+  if [[ ! -f "$AE_GEMINI_SRC" ]]; then
+    ui_error "Backend transcribe_gemini.py tidak ditemukan: $AE_GEMINI_SRC"
+    log_error "AE backend missing $AE_GEMINI_SRC"
+    return 2
   fi
+  # Key dibaca backend dari file 0600; jangan pernah lewat argv/env.
+  raw=$(python3 "$AE_GEMINI_SRC" --audio "$audio" \
+    --key-file "$AE_GEMINI_KEY_FILE" --out-txt "$txt_tmp" \
+    2>"$scratch/stderr.log")
   rc=$?
   json="${raw##*$'\n'}"
-  # _ae_transcribe dipanggil lewat $(...), jadi variabel global tidak sampai ke
-  # caller. Simpan bahasa hasil deteksi di scratch agar bisa ditampilkan.
-  if [[ "$engine" == "gemini" ]]; then
-    printf '' > "$scratch/language" 2>/dev/null || :
-  else
-    language=$(_ae_json_value "$json" language)
-    printf '%s' "$language" > "$scratch/language" 2>/dev/null || :
-  fi
   if ((rc != 0)); then
     msg=$(_ae_json_value "$json" message)
     ui_error "Transkripsi gagal (exit $rc): ${msg:-lihat logs untuk detail}."
@@ -457,11 +464,10 @@ _ae_transcribe() {
 }
 
 ae_process() {
-  local video="$1" job="${2:-both}" reprocess="${3:-ask}" engine="${4:-local}"
+  local video="$1" job="${2:-both}" reprocess="${3:-ask}" engine="${4:-gemini}"
   local name base stem scratch mp3_tmp audio_tmp txt_tmp
   local final_mp3 final_txt need_mp3=0 need_txt=0
   local existing=0 invalid=0 choice mp3_ok=0 fail_before=$AE_FAIL
-  local lang_suffix="" detected_lang=""
 
   AE_TOTAL=$((AE_TOTAL + 1))
   _ae_ensure_dirs || { AE_FAIL=$((AE_FAIL + 1)); return 1; }
@@ -583,25 +589,16 @@ ae_process() {
       ui_error "Tidak ada audio untuk ditranskripsi: $name"
       AE_FAIL=$((AE_FAIL + 1))
     else
-      if [[ "$engine" == "gemini" ]]; then
-        printf '  Transkripsi (Gemini API)... '
-      else
-        printf '  Transkripsi (model lokal)... '
-      fi
+      printf '  Transkripsi (Gemini API)... '
       # --out-txt harus fresh: backend tidak menimpa file yang sudah ada.
       txt_tmp="$scratch/$base.$RANDOM.$RANDOM.txt"
       rm -f -- "$txt_tmp"
       json_result=$(_ae_transcribe "$engine" "$scratch" "$audio_for_txt" "$txt_tmp")
-      lang_suffix=""
-      if [[ -f "$scratch/language" ]]; then
-        detected_lang=$(<"$scratch/language")
-        [[ -n "$detected_lang" ]] && lang_suffix=" (bahasa=$detected_lang)"
-      fi
       case "$json_result" in
         NO_SPEECH)
           AE_NO_SPEECH=$((AE_NO_SPEECH + 1))
           printf '%bTANPA_UCAPAN%b\n' "$YELLOW" "$RESET"
-          printf '  Tidak ada ucapan yang terdeteksi; TXT tidak dibuat: %s%s\n' "$name" "$lang_suffix"
+          printf '  Tidak ada ucapan yang terdeteksi; TXT tidak dibuat: %s\n' "$name"
           log_info "AE no_speech video=$video"
           ;;
         "$txt_tmp")
@@ -609,7 +606,7 @@ ae_process() {
             AE_TXT_OK=$((AE_TXT_OK + 1))
             AE_OUTPUT_OWNER["$final_txt"]="$video"
             printf '%bOK%b\n' "$GREEN" "$RESET"
-            printf '  TXT: %s%s\n' "$final_txt" "$lang_suffix"
+            printf '  TXT: %s\n' "$final_txt"
             log_info "AE txt ok path=$final_txt"
           else
             printf '%bGAGAL%b\n' "$RED" "$RESET"
@@ -647,7 +644,7 @@ _ae_collect_videos() {
 }
 
 ae_batch() {
-  local dir="${1:-$AE_INPUT_DIR}" job="${2:-both}" reprocess="${3:-ask}" engine="${4:-local}"
+  local dir="${1:-$AE_INPUT_DIR}" job="${2:-both}" reprocess="${3:-ask}" engine="${4:-gemini}"
   local answer batch_reprocess="$reprocess" f i=0 n before
 
   if [[ ! -d "$dir" ]]; then
