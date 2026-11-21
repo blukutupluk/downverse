@@ -5,7 +5,7 @@
 # aktifkan set -u.
 
 AE_MODULE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_ROOT="${AUDIO_EXTRACTOR_ROOT:-${OUTPUT_ROOT:-/storage/7544-8C33/output}/audio-extractor}"
+OUT_ROOT="${AUDIO_EXTRACTOR_ROOT:-${OUTPUT_ROOT:-/storage/7544-8C33/output}/audio-extractor/hasil-extract}"
 TEMP_ROOT="$OUT_ROOT/temp"
 AE_LOG_DIR="${LOG_DIR:-$AE_MODULE_ROOT/logs}"
 AE_INPUT_DIR="${OUTPUT_ROOT:-/storage/7544-8C33/output}/input"
@@ -132,7 +132,7 @@ _ae_disarm_trap() {
 
 _ae_ensure_dirs() {
   local d
-  for d in "$OUT_ROOT" "$TEMP_ROOT" "$OUT_ROOT/models" "$OUT_ROOT/logs" "$AE_LOG_DIR"; do
+  for d in "$OUT_ROOT" "$TEMP_ROOT" "$AE_LOG_DIR"; do
     if ! mkdir -p -- "$d" 2>/dev/null; then
       ui_error "Gagal membuat folder: $d"
       return 1
