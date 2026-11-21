@@ -95,6 +95,29 @@ gemini/gemini-2.5-flash
 openrouter/google/gemini-2.5-flash
 ```
 
+## Kelola Akun OpenCode Console
+
+Skrip `opencode-account` memakai **CLI resmi** `opencode auth` (aman, tidak menulis SQLite manual):
+
+```bash
+opencode-account add                        # tambah akun baru (login device flow)
+opencode-account list                       # lihat akun + email + status aktif
+opencode-account switch [label]             # ganti akun aktif (picker kalau kosong)
+opencode-account add-import <file.json>     # import dari backup
+opencode-account export [file.json]         # backup credential (izin 0600)
+opencode-account remove <label>             # hapus akun
+```
+
+Contoh hasil `opencode-account list`:
+
+```
+LABEL     EMAIL               ORG       STATUS  ID
+Personal  user@example.com  Personal  AKTIF  cred_example...
+example-user  user@example.com  example-user  -      cred_example...
+```
+
+> Token akses **tidak pernah** ditampilkan di `list` atau log. File `export` berisi rahasia — jangan dibagikan.
+
 ## Endpoint API
 
 | Endpoint | Keterangan |
