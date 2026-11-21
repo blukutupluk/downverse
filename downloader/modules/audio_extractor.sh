@@ -11,9 +11,6 @@ AE_LOG_DIR="${LOG_DIR:-$AE_MODULE_ROOT/logs}"
 AE_INPUT_DIR="${OUTPUT_ROOT:-/storage/7544-8C33/output}/input"
 AE_GEMINI_SRC="$AE_MODULE_ROOT/backend/transcribe_gemini.py"
 AE_GEMINI_KEY_FILE="${AE_GEMINI_KEY_FILE:-$HOME/.config/media-downloader/gemini.key}"
-AE_OPENROUTER_SRC="$AE_MODULE_ROOT/backend/transcribe_openrouter.py"
-AE_OPENROUTER_KEY_FILE="${AE_OPENROUTER_KEY_FILE:-$HOME/.config/media-downloader/openrouter.key}"
-AE_OPENROUTER_MODEL="${AE_OPENROUTER_MODEL:-openai/whisper-1}"
 
 AE_TOTAL=0
 AE_MP3_OK=0
@@ -378,64 +375,9 @@ _ae_prompt_new_key() {
   return 1
 }
 
-_ae_stored_key_usable_or() {
-  local key
-  [[ -f "$AE_OPENROUTER_KEY_FILE" && -r "$AE_OPENROUTER_KEY_FILE" ]] || return 1
-  key=$(<"$AE_OPENROUTER_KEY_FILE") || return 1
-  [[ -n "${key//[[:space:]]/}" ]]
-}
-
-_ae_save_key_or() {
-  local key="$1" key_dir key_tmp
-  key_dir=$(dirname -- "$AE_OPENROUTER_KEY_FILE")
-  if ! mkdir -p -- "$key_dir"; then
-    ui_error "Gagal membuat folder API key OpenRouter: $key_dir" >&2
-    return 1
-  fi
-  if [[ -d "$AE_OPENROUTER_KEY_FILE" ]]; then
-    ui_error "Path API key OpenRouter adalah folder, bukan file: $AE_OPENROUTER_KEY_FILE" >&2
-    return 1
-  fi
-  if ! key_tmp=$(mktemp "$AE_OPENROUTER_KEY_FILE.tmp.XXXXXX"); then
-    ui_error "Gagal membuat file sementara API key OpenRouter." >&2
-    return 1
-  fi
-  if ! (umask 077; printf '%s\n' "$key" > "$key_tmp") \
-    || ! chmod 600 -- "$key_tmp" \
-    || ! mv -f -- "$key_tmp" "$AE_OPENROUTER_KEY_FILE"; then
-    rm -f -- "$key_tmp" 2>/dev/null || :
-    ui_error "Gagal menyimpan API key OpenRouter." >&2
-    return 1
-  fi
-}
-
-_ae_prompt_openrouter_key() {
-  local key=""
-  printf '%s\n' 'API key OpenRouter [Enter = key tersimpan]: ' >&2
-  IFS= read -rs key
-  printf '\n' >&2
-  if [[ -z "${key//[[:space:]]/}" ]]; then
-    key=""
-  fi
-  if [[ -n "$key" ]]; then
-    _ae_save_key_or "$key"
-    return
-  fi
-  if _ae_stored_key_usable_or; then
-    chmod 600 -- "$AE_OPENROUTER_KEY_FILE" 2>/dev/null || :
-    return 0
-  fi
-  if [[ -s "$AE_OPENROUTER_KEY_FILE" ]]; then
-    ui_error "API key OpenRouter tersimpan kosong. Tempel key baru di prompt." >&2
-  else
-    ui_error "Belum ada API key OpenRouter. Tempel key di prompt atau jalankan ulang menu 12." >&2
-  fi
-  return 1
-}
-
 _ae_prompt_engine() {
   local choice key=""
-  printf '\n%s\n' 'Mesin transkripsi: 1) Gemini API  2) Gemini API (ganti key)  3) OpenRouter API  4) OpenRouter API (ganti key)' >&2
+  printf '\n%s\n' 'Mesin transkripsi: 1) Gemini API  2) Gemini API (ganti key)' >&2
   printf 'Pilih mesin [1]: ' >&2
   IFS= read -r choice
   [[ -z "$choice" ]] && choice=1
@@ -464,75 +406,29 @@ _ae_prompt_engine() {
       _ae_save_key "$key" || { unset key; return 1; }
       unset key
       ;;
-    3)
-      if _ae_stored_key_usable_or; then
-        if ! chmod 600 -- "$AE_OPENROUTER_KEY_FILE"; then
-          ui_error "Gagal mengamankan izin API key OpenRouter (0600)." >&2
-          return 1
-        fi
-        printf '%s\n' 'Memakai API key OpenRouter tersimpan.' >&2
-        printf 'openrouter'
-        return 0
-      fi
-      _ae_prompt_openrouter_key || return 1
-      ;;
-    4)
-      printf '%s\n' 'API key OpenRouter baru [Enter = batal]: ' >&2
-      IFS= read -rs key
-      printf '\n' >&2
-      if [[ -z "${key//[[:space:]]/}" ]]; then
-        ui_error "Ganti key dibatalkan; key lama tidak diubah." >&2
-        unset key
-        return 1
-      fi
-      _ae_save_key_or "$key" || { unset key; return 1; }
-      unset key
-      ;;
     *)
       ui_error "Pilihan mesin tidak valid: $choice" >&2
       return 1
       ;;
   esac
-  case "$choice" in
-    1|2) printf 'gemini' ;;
-    3|4) printf 'openrouter' ;;
-  esac
+  printf 'gemini'
 }
-
-
 
 _ae_transcribe() {
   local engine="$1" scratch="$2" audio="$3" txt_tmp="$4" json raw rc ok_val reason msg
-  local backend="" key_file="" extra=()
-  case "$engine" in
-    gemini)
-      backend="$AE_GEMINI_SRC"
-      key_file="$AE_GEMINI_KEY_FILE"
-      if [[ ! -f "$backend" ]]; then
-        ui_error "Backend transcribe_gemini.py tidak ditemukan: $backend"
-        log_error "AE backend missing $backend"
-        return 2
-      fi
-      ;;
-    openrouter)
-      backend="$AE_OPENROUTER_SRC"
-      key_file="$AE_OPENROUTER_KEY_FILE"
-      if [[ ! -f "$backend" ]]; then
-        ui_error "Backend transcribe_openrouter.py tidak ditemukan: $backend"
-        log_error "AE backend missing $backend"
-        return 2
-      fi
-      extra=(--model "$AE_OPENROUTER_MODEL")
-      ;;
-    *)
-      ui_error "Mesin transkripsi tidak didukung: $engine"
-      log_error "AE unsupported engine=$engine"
-      return 2
-      ;;
-  esac
+  if [[ "$engine" != "gemini" ]]; then
+    ui_error "Mesin transkripsi tidak didukung: $engine"
+    log_error "AE unsupported engine=$engine"
+    return 2
+  fi
+  if [[ ! -f "$AE_GEMINI_SRC" ]]; then
+    ui_error "Backend transcribe_gemini.py tidak ditemukan: $AE_GEMINI_SRC"
+    log_error "AE backend missing $AE_GEMINI_SRC"
+    return 2
+  fi
   # Key dibaca backend dari file 0600; jangan pernah lewat argv/env.
-  raw=$(python3 "$backend" --audio "$audio" \
-    --key-file "$key_file" --out-txt "$txt_tmp" "${extra[@]}" \
+  raw=$(python3 "$AE_GEMINI_SRC" --audio "$audio" \
+    --key-file "$AE_GEMINI_KEY_FILE" --out-txt "$txt_tmp" \
     2>"$scratch/stderr.log")
   rc=$?
   json="${raw##*$'\n'}"
@@ -566,8 +462,6 @@ _ae_transcribe() {
   log_error "AE transcribe error json=$json"
   return 2
 }
-
-
 
 ae_process() {
   local video="$1" job="${2:-both}" reprocess="${3:-ask}" engine="${4:-gemini}"
@@ -695,11 +589,7 @@ ae_process() {
       ui_error "Tidak ada audio untuk ditranskripsi: $name"
       AE_FAIL=$((AE_FAIL + 1))
     else
-      if [[ "$engine" == "openrouter" ]]; then
-        printf '  Transkripsi (OpenRouter API)... '
-      else
-        printf '  Transkripsi (Gemini API)... '
-      fi
+      printf '  Transkripsi (Gemini API)... '
       # --out-txt harus fresh: backend tidak menimpa file yang sudah ada.
       txt_tmp="$scratch/$base.$RANDOM.$RANDOM.txt"
       rm -f -- "$txt_tmp"
