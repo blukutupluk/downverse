@@ -10,6 +10,8 @@ MODEL_DIR="$OUT_ROOT/models/faster-whisper-base"
 AE_LOG_DIR="${LOG_DIR:-$AE_MODULE_ROOT/logs}"
 AE_INPUT_DIR="${OUTPUT_ROOT:-/storage/7544-8C33/output}/input"
 AE_TRANSCRIBE_SRC="$AE_MODULE_ROOT/backend/transcribe.py"
+AE_GEMINI_SRC="$AE_MODULE_ROOT/backend/transcribe_gemini.py"
+AE_GEMINI_KEY_FILE="${AE_GEMINI_KEY_FILE:-$HOME/.config/media-downloader/gemini.key}"
 
 AE_TOTAL=0
 AE_MP3_OK=0
@@ -318,26 +320,76 @@ _ae_ask_existing() {
   esac
 }
 
+_ae_prompt_engine() {
+  local choice key=""
+  printf '\n%s\n' 'Mesin transkripsi: 1) Lokal  2) Gemini API' >&2
+  printf 'Pilih mesin [1]: ' >&2
+  IFS= read -r choice
+  [[ -z "$choice" ]] && choice=1
+  case "$choice" in
+    1) printf 'local'; return 0 ;;
+    2) ;;
+    *) ui_error "Pilihan mesin tidak valid: $choice" >&2; return 1 ;;
+  esac
+  printf '%s\n' 'API key Google AI Studio [Enter = key tersimpan]: ' >&2
+  IFS= read -rs key
+  printf '\n' >&2
+  if [[ -n "$key" ]]; then
+    mkdir -p -- "$(dirname -- "$AE_GEMINI_KEY_FILE")" || { unset key; return 1; }
+    if ! (umask 077; printf '%s\n' "$key" > "$AE_GEMINI_KEY_FILE"); then
+      ui_error "Gagal menyimpan API key Gemini." >&2
+      unset key
+      return 1
+    fi
+    chmod 600 -- "$AE_GEMINI_KEY_FILE" || { unset key; return 1; }
+  elif [[ ! -s "$AE_GEMINI_KEY_FILE" ]]; then
+    ui_error "Belum ada API key Gemini. Tempel key di prompt atau jalankan ulang menu 12." >&2
+    unset key
+    return 1
+  fi
+  unset key
+  printf 'gemini'
+}
+
 _ae_transcribe() {
-  local scratch="$1" audio="$2" txt_tmp="$3" json raw rc ok_val reason msg language
-  if [[ ! -f "$AE_TRANSCRIBE_SRC" ]]; then
-    ui_error "Backend transcribe.py tidak ditemukan: $AE_TRANSCRIBE_SRC"
-    log_error "AE backend missing $AE_TRANSCRIBE_SRC"
-    return 2
+  local engine="$1" scratch="$2" audio="$3" txt_tmp="$4" json raw rc ok_val reason msg language
+  if [[ "$engine" == "gemini" ]]; then
+    if [[ ! -f "$AE_GEMINI_SRC" ]]; then
+      ui_error "Backend transcribe_gemini.py tidak ditemukan: $AE_GEMINI_SRC"
+      log_error "AE backend missing $AE_GEMINI_SRC"
+      return 2
+    fi
+  else
+    if [[ ! -f "$AE_TRANSCRIBE_SRC" ]]; then
+      ui_error "Backend transcribe.py tidak ditemukan: $AE_TRANSCRIBE_SRC"
+      log_error "AE backend missing $AE_TRANSCRIBE_SRC"
+      return 2
+    fi
+    if ! cp -- "$AE_TRANSCRIBE_SRC" "$scratch/transcribe.py"; then
+      ui_error "Gagal menyalin backend transcribe.py ke folder temp."
+      return 2
+    fi
   fi
-  if ! cp -- "$AE_TRANSCRIBE_SRC" "$scratch/transcribe.py"; then
-    ui_error "Gagal menyalin backend transcribe.py ke folder temp."
-    return 2
+  if [[ "$engine" == "gemini" ]]; then
+    # Key dibaca backend dari file 0600; jangan pernah lewat argv/env.
+    raw=$(python3 "$AE_GEMINI_SRC" --audio "$audio" \
+      --key-file "$AE_GEMINI_KEY_FILE" --out-txt "$txt_tmp" \
+      2>"$scratch/stderr.log")
+  else
+    raw=$(proot_login "$PROOT_PYTHON" "$scratch/transcribe.py" \
+      --audio "$audio" --out-txt "$txt_tmp" --model-dir "$MODEL_DIR" \
+      2>"$scratch/stderr.log")
   fi
-  raw=$(proot_login "$PROOT_PYTHON" "$scratch/transcribe.py" \
-    --audio "$audio" --out-txt "$txt_tmp" --model-dir "$MODEL_DIR" \
-    2>"$scratch/stderr.log")
   rc=$?
   json="${raw##*$'\n'}"
   # _ae_transcribe dipanggil lewat $(...), jadi variabel global tidak sampai ke
   # caller. Simpan bahasa hasil deteksi di scratch agar bisa ditampilkan.
-  language=$(_ae_json_value "$json" language)
-  printf '%s' "$language" > "$scratch/language" 2>/dev/null || :
+  if [[ "$engine" == "gemini" ]]; then
+    printf '' > "$scratch/language" 2>/dev/null || :
+  else
+    language=$(_ae_json_value "$json" language)
+    printf '%s' "$language" > "$scratch/language" 2>/dev/null || :
+  fi
   if ((rc != 0)); then
     msg=$(_ae_json_value "$json" message)
     ui_error "Transkripsi gagal (exit $rc): ${msg:-lihat logs untuk detail}."
@@ -366,7 +418,7 @@ _ae_transcribe() {
 }
 
 ae_process() {
-  local video="$1" job="${2:-both}" reprocess="${3:-ask}"
+  local video="$1" job="${2:-both}" reprocess="${3:-ask}" engine="${4:-local}"
   local name base stem scratch mp3_tmp audio_tmp txt_tmp
   local final_mp3 final_txt need_mp3=0 need_txt=0
   local existing=0 invalid=0 choice mp3_ok=0 fail_before=$AE_FAIL
@@ -492,11 +544,15 @@ ae_process() {
       ui_error "Tidak ada audio untuk ditranskripsi: $name"
       AE_FAIL=$((AE_FAIL + 1))
     else
-      printf '  Transkripsi (model lokal)... '
+      if [[ "$engine" == "gemini" ]]; then
+        printf '  Transkripsi (Gemini API)... '
+      else
+        printf '  Transkripsi (model lokal)... '
+      fi
       # --out-txt harus fresh: backend tidak menimpa file yang sudah ada.
       txt_tmp="$scratch/$base.$RANDOM.$RANDOM.txt"
       rm -f -- "$txt_tmp"
-      json_result=$(_ae_transcribe "$scratch" "$audio_for_txt" "$txt_tmp")
+      json_result=$(_ae_transcribe "$engine" "$scratch" "$audio_for_txt" "$txt_tmp")
       lang_suffix=""
       if [[ -f "$scratch/language" ]]; then
         detected_lang=$(<"$scratch/language")
@@ -552,7 +608,7 @@ _ae_collect_videos() {
 }
 
 ae_batch() {
-  local dir="${1:-$AE_INPUT_DIR}" job="${2:-both}" reprocess="${3:-ask}"
+  local dir="${1:-$AE_INPUT_DIR}" job="${2:-both}" reprocess="${3:-ask}" engine="${4:-local}"
   local answer batch_reprocess="$reprocess" f i=0 n before
 
   if [[ ! -d "$dir" ]]; then
@@ -586,7 +642,7 @@ ae_batch() {
     i=$((i + 1))
     printf '\n[%d/%d] %s\n' "$i" "$n" "$(basename -- "$f")"
     before=$AE_FAIL
-    ae_process "$f" "$job" "$batch_reprocess"
+    ae_process "$f" "$job" "$batch_reprocess" "$engine"
     if ((AE_FAIL > before)); then AE_BATCH_FAILED+=("$f"); fi
   done
   _ae_print_summary
@@ -605,7 +661,7 @@ _ae_print_summary() {
 }
 
 _ae_module_body() {
-  local mode="" job_choice="" job="" video="" input_dir="" rc n=0 i=0 pil="" pil_num=0
+  local mode="" job_choice="" job="" video="" input_dir="" engine="" rc n=0 i=0 pil="" pil_num=0
   ui_header
   ui_section "AUDIO EXTRACTOR + TRANSCRIBER"
   printf '\n%s\n' 'Pilih mode: 1) Single Video  2) Batch Folder  0) Kembali'
@@ -627,6 +683,10 @@ _ae_module_body() {
     3) job='txt' ;;
     *) ui_error "Pilihan pekerjaan tidak valid."; return 1 ;;
   esac
+
+  if [[ "$job" != "mp3" ]]; then
+    engine=$(_ae_prompt_engine) || return 1
+  fi
 
   ae_reset_state
   if [[ "$mode" == "1" ]]; then
@@ -672,7 +732,7 @@ _ae_module_body() {
       ui_error "Video berada di dalam folder output audio-extractor: $video"
       return 1
     fi
-    ae_process "$video" "$job" ask
+    ae_process "$video" "$job" ask "$engine"
     rc=$?
   else
     printf '%b' "${CYAN}${BOLD}Folder video [${AE_INPUT_DIR}]: ${RESET}"
@@ -686,7 +746,7 @@ _ae_module_body() {
       ui_error "Folder input berada di dalam folder output audio-extractor: $input_dir"
       return 1
     fi
-    ae_batch "$input_dir" "$job" ask
+    ae_batch "$input_dir" "$job" ask "$engine"
     rc=$?
   fi
   _ae_print_summary
