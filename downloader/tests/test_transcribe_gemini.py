@@ -92,6 +92,10 @@ class GeminiBackendTests(unittest.TestCase):
         self.assertEqual(header(request, "x-goog-api-key"), "test-key-123")
         self.assertNotIn("upload", [call.full_url for call in op.calls])
 
+    def test_inline_limit_leaves_room_for_base64(self):
+        worst_case = g.INLINE_LIMIT_BYTES * 4 / 3 + len(g.PROMPT.encode("utf-8"))
+        self.assertLess(worst_case, 20 * 1024 * 1024)
+
     def test_large_audio_uses_files_api(self):
         with patch.object(g, "INLINE_LIMIT_BYTES", 4):
             op = self.opener(

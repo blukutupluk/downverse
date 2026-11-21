@@ -20,7 +20,7 @@ import urllib.request
 MODEL = "gemini-4-hydrogen"
 API_REVISION = "2026-05-20"
 BASE_URL = "https://generativelanguage.googleapis.com"
-INLINE_LIMIT_BYTES = 18 * 1024 * 1024
+INLINE_LIMIT_BYTES = 14 * 1024 * 1024
 MIME = "audio/mp3"
 MARKER = "[tidak terdengar]"
 TIMEOUT = 180
@@ -49,7 +49,7 @@ def load_key(path):
     except OSError:
         raise GeminiError(
             "NO_KEY",
-            "API key Gemini belum tersedia. Tempel key dimenu 12 saat prompt muncul.",
+            "API key Gemini belum tersedia. Tempel key di menu 12 saat prompt muncul.",
         )
     if not key:
         raise GeminiError(
