@@ -1,0 +1,11 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# deb - masuk ke Proot Debian langsung dari Termux.
+# Pemakaian:
+#   deb              -> shell interaktif Debian
+#   deb <perintah>   -> jalankan perintah di Debian lalu keluar
+
+if [ "$#" -eq 0 ]; then
+  exec proot-distro login debian
+else
+  exec proot-distro login debian -- "$@"
+fi
