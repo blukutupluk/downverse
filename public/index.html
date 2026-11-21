@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Key Manager Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+    .status-badge { @apply px-2 py-0.5 text-xs font-medium rounded-full; }
+    .status-active { @apply bg-green-100 text-green-800; }
+    .status-cooldown { @apply bg-yellow-100 text-yellow-800; }
+    .status-disabled { @apply bg-red-100 text-red-800; }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center space-x-3">
+          <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            </svg>
+          </div>
+          <h1 class="text-xl font-bold text-gray-900">API Key Manager</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+          <span id="server-status" class="status-badge status-active">Server Running</span>
+          <span id="port-display" class="text-sm text-gray-500 px-3 py-1 bg-gray-100 rounded">Port: 3000</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6" id="stats-cards">
+      <!-- Stats will be inserted here -->
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div class="border-b border-gray-200">
+        <nav class="flex space-x-8 px-6" aria-label="Tabs">
+          <button class="tab-btn py-4 px-1 border-b-2 font-medium text-sm text-blue-600 border-blue-600" data-tab="keys">API Keys</button>
+          <button class="tab-btn py-4 px-1 border-b-2 font-medium text-sm text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300" data-tab="logs">Request Logs</button>
+          <button class="tab-btn py-4 px-1 border-b-2 font-medium text-sm text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300" data-tab="settings">Settings</button>
+        </nav>
+      </div>
+
+      <!-- Keys Tab -->
+      <div id="tab-keys" class="tab-content p-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
+          <h2 class="text-lg font-semibold text-gray-900">Manage API Keys</h2>
+          <button id="add-key-btn" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors">
+            <svg class="inline w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            Add Key
+          </button>
+        </div>
+
+        <!-- Add/Edit Key Modal -->
+        <div id="key-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 id="modal-title" class="text-lg font-semibold text-gray-900">Add API Key</h3>
+              <button id="close-modal" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <form id="key-form" class="p-6 space-y-4">
+              <input type="hidden" id="key-id">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Provider</label>
+                <select id="key-provider" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                  <option value="">Select provider</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="groq">Groq</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="together">Together AI</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input type="text" id="key-name" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., Main Groq Key" required>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                <div class="relative">
+                  <input type="password" id="key-value" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10" placeholder="Enter API key" required>
+                  <button type="button" id="toggle-key-visibility" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="eye-open">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                    </svg>
+                    <svg class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="eye-closed">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L3 3"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="flex space-x-3 pt-4">
+                <button type="button" id="cancel-modal" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">Cancel</button>
+                <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Keys Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full" id="keys-table">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key Preview</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Used</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200" id="keys-tbody">
+              <!-- Rows inserted here -->
+            </tbody>
+          </table>
+        </div>
+
+        <div id="empty-state" class="hidden text-center py-12">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">No API keys configured</h3>
+          <p class="mt-1 text-sm text-gray-500">Click "Add Key" to get started</p>
+        </div>
+      </div>
+
+      <!-- Logs Tab -->
+      <div id="tab-logs" class="tab-content p-6 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
+          <h2 class="text-lg font-semibold text-gray-900">Request Logs</h2>
+          <button id="clear-logs-btn" class="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium text-sm">
+            Clear Logs
+          </button>
+        </div>
+        <div class="bg-gray-900 rounded-lg p-4 font-mono text-xs text-green-300 max-h-96 overflow-auto" id="logs-container">
+          <div class="text-gray-500">No logs yet. Make a request through OpenCode to see logs here.</div>
+        </div>
+      </div>
+
+      <!-- Settings Tab -->
+      <div id="tab-settings" class="tab-content p-6 hidden">
+        <h2 class="text-lg font-semibold text-gray-900 mb-6">Settings</h2>
+        <div class="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
+          <div>
+            <h3 class="text-md font-medium text-gray-900 mb-4">OpenCode Integration</h3>
+            <p class="text-sm text-gray-600 mb-4">Add this configuration to your <code class="bg-gray-100 px-2 py-1 rounded text-blue-600">~/.config/opencode/opencode.json</code> to use the local proxy:</p>
+            <pre id="opencode-config" class="bg-gray-900 text-green-300 p-4 rounded-lg text-sm overflow-auto max-h-48"></pre>
+            <button id="copy-config-btn" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 text-sm">
+              Copy Configuration
+            </button>
+          </div>
+          
+          <div class="border-t border-gray-200 pt-6">
+            <h3 class="text-md font-medium text-gray-900 mb-4">Server Configuration</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Server Port</label>
+                <input type="number" id="server-port" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="3000" disabled>
+                <p class="mt-1 text-xs text-gray-500">Restart server to change port</p>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Default Cooldown (seconds)</label>
+                <input type="number" id="default-cooldown" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="60">
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-gray-200 pt-6">
+            <h3 class="text-md font-medium text-gray-900 mb-4">Data Management</h3>
+            <div class="flex flex-col sm:flex-row gap-3">
+              <button id="export-data-btn" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
+                Export Keys (JSON)
+              </button>
+              <button id="import-data-btn" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
+                Import Keys (JSON)
+              </button>
+              <input type="file" id="import-file" accept=".json" class="hidden">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Global state
+    let keys = [];
+    let logs = [];
+    let editingKeyId = null;
+
+    // API Base URL
+    const API_BASE = '/api';
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadStats();
+      await loadKeys();
+      setupEventListeners();
+      updateOpenCodeConfig();
+      startPeriodicRefresh();
+    });
+
+    // Event Listeners
+    function setupEventListeners() {
+      // Tab switching
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+      });
+
+      // Add key button
+      document.getElementById('add-key-btn').addEventListener('click', () => openModal());
+
+      // Modal controls
+      document.getElementById('close-modal').addEventListener('click', closeModal);
+      document.getElementById('cancel-modal').addEventListener('click', closeModal);
+      document.getElementById('key-form').addEventListener('submit', handleKeySubmit);
+      document.getElementById('toggle-key-visibility').addEventListener('click', toggleKeyVisibility);
+
+      // Key visibility toggle
+      document.getElementById('key-modal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeModal();
+      });
+
+      // Settings
+      document.getElementById('copy-config-btn').addEventListener('click', copyConfig);
+      document.getElementById('export-data-btn').addEventListener('click', exportData);
+      document.getElementById('import-data-btn').addEventListener('click', () => document.getElementById('import-file').click());
+      document.getElementById('import-file').addEventListener('change', importData);
+      document.getElementById('clear-logs-btn').addEventListener('click', clearLogs);
+    }
+
+    // Tab switching
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        const isActive = btn.dataset.tab === tabName;
+        btn.classList.toggle('text-blue-600', isActive);
+        btn.classList.toggle('border-blue-600', isActive);
+        btn.classList.toggle('text-gray-500', !isActive);
+        btn.classList.toggle('border-transparent', !isActive);
+      });
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.toggle('hidden', content.id !== `tab-${tabName}`);
+      });
+    }
+
+    // Modal handling
+    function openModal(key = null) {
+      editingKeyId = key?.id || null;
+      document.getElementById('modal-title').textContent = key ? 'Edit API Key' : 'Add API Key';
+      document.getElementById('key-id').value = key?.id || '';
+      document.getElementById('key-provider').value = key?.provider || '';
+      document.getElementById('key-provider').disabled = !!key; // Can't change provider when editing
+      document.getElementById('key-name').value = key?.name || '';
+      document.getElementById('key-value').value = key?.key || '';
+      document.getElementById('key-modal').classList.remove('hidden');
+      document.getElementById('key-modal').classList.add('flex');
+    }
+
+    function closeModal() {
+      document.getElementById('key-modal').classList.add('hidden');
+      document.getElementById('key-modal').classList.remove('flex');
+      document.getElementById('key-form').reset();
+      editingKeyId = null;
+      document.getElementById('key-provider').disabled = false;
+    }
+
+    function toggleKeyVisibility() {
+      const input = document.getElementById('key-value');
+      const eyeOpen = document.getElementById('eye-open');
+      const eyeClosed = document.getElementById('eye-closed');
+      if (input.type === 'password') {
+        input.type = 'text';
+        eyeOpen.classList.add('hidden');
+        eyeClosed.classList.remove('hidden');
+      } else {
+        input.type = 'password';
+        eyeOpen.classList.remove('hidden');
+        eyeClosed.classList.add('hidden');
+      }
+    }
+
+    // API Calls
+    async function apiFetch(endpoint, options = {}) {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        headers: { 'Content-Type': 'application/json', ...options.headers },
+        ...options
+      });
+      if (!res.ok && res.status !== 204) {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      return res.status === 204 ? null : res.json();
+    }
+
+    async function loadKeys() {
+      try {
+        keys = await apiFetch('/keys');
+        renderKeys();
+      } catch (err) {
+        console.error('Failed to load keys:', err);
+        addLog(`ERROR: Failed to load keys - ${err.message}`);
+      }
+    }
+
+    async function loadStats() {
+      try {
+        const stats = await apiFetch('/stats');
+        renderStats(stats);
+      } catch (err) {
+        console.error('Failed to load stats:', err);
+      }
+    }
+
+    async function handleKeySubmit(e) {
+      e.preventDefault();
+      const id = document.getElementById('key-id').value;
+      const provider = document.getElementById('key-provider').value;
+      const name = document.getElementById('key-name').value;
+      const keyValue = document.getElementById('key-value').value;
+
+      if (!provider || !keyValue) {
+        alert('Provider and API Key are required');
+        return;
+      }
+
+      try {
+        if (id) {
+          await apiFetch(`/keys/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name, status: 'active' })
+          });
+          addLog(`Updated key: ${name}`);
+        } else {
+          await apiFetch('/keys', {
+            method: 'POST',
+            body: JSON.stringify({ provider, name, key: keyValue })
+          });
+          addLog(`Added new key: ${name} (${provider})`);
+        }
+        closeModal();
+        await loadKeys();
+        await loadStats();
+      } catch (err) {
+        alert(`Error: ${err.message}`);
+      }
+    }
+
+    async function deleteKey(id, name) {
+      if (!confirm(`Delete key "${name}"?`)) return;
+      try {
+        await apiFetch(`/keys/${id}`, { method: 'DELETE' });
+        addLog(`Deleted key: ${name}`);
+        await loadKeys();
+        await loadStats();
+      } catch (err) {
+        alert(`Error: ${err.message}`);
+      }
+    }
+
+    async function toggleKeyStatus(id, currentStatus) {
+      const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
+      try {
+        await apiFetch(`/keys/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: newStatus })
+        });
+        addLog(`Key status changed to ${newStatus}`);
+        await loadKeys();
+        await loadStats();
+      } catch (err) {
+        alert(`Error: ${err.message}`);
+      }
+    }
+
+    // Rendering
+    function renderKeys() {
+      const tbody = document.getElementById('keys-tbody');
+      const emptyState = document.getElementById('empty-state');
+
+      if (keys.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      tbody.innerHTML = keys.map(key => `
+        <tr class="fade-in hover:bg-gray-50">
+          <td class="px-4 py-3">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${getProviderColor(key.provider)}-100 text-${getProviderColor(key.provider)}-800">
+              ${getProviderIcon(key.provider)} ${key.provider}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-sm font-medium text-gray-900">${key.name}</td>
+          <td class="px-4 py-3 text-sm font-mono text-gray-500">${key.key}</td>
+          <td class="px-4 py-3">
+            <span class="status-badge status-${key.status}" id="status-${key.id}">
+              ${getStatusLabel(key.status)}${key.status === 'cooldown' && key.cooldownUntil ? ` (${formatCooldown(key.cooldownUntil)})` : ''}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-sm text-gray-600">
+            ✓ ${key.successCount || 0} / ✗ ${key.errorCount || 0}
+          </td>
+          <td class="px-4 py-3 text-sm text-gray-500">${key.lastUsed ? formatDate(key.lastUsed) : 'Never'}</td>
+          <td class="px-4 py-3 text-right">
+            <div class="flex items-center justify-end space-x-2">
+              <button onclick="toggleKeyStatus('${key.id}', '${key.status}')" class="text-xs px-2 py-1 ${key.status === 'active' ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'} rounded transition-colors">
+                ${key.status === 'active' ? 'Disable' : 'Enable'}
+              </button>
+              <button onclick="openModal(${JSON.stringify(key).replace(/"/g, '"')})" class="text-xs px-2 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded transition-colors">
+                Edit
+              </button>
+              <button onclick="deleteKey('${key.id}', '${key.name}')" class="text-xs px-2 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded transition-colors">
+                Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      // Make functions globally accessible for inline onclick
+      window.toggleKeyStatus = toggleKeyStatus;
+      window.openModal = openModal;
+      window.deleteKey = deleteKey;
+    }
+
+    function renderStats(stats) {
+      const container = document.getElementById('stats-cards');
+      const cards = [
+        { label: 'Total Keys', value: stats.totalKeys, color: 'blue', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
+        { label: 'Active', value: stats.activeKeys, color: 'green', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+        { label: 'Cooldown', value: stats.cooldownKeys, color: 'yellow', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+        { label: 'Disabled', value: stats.disabledKeys, color: 'red', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z' },
+        { label: 'Total Requests', value: stats.totalSuccessCount + stats.totalErrorCount, color: 'purple', icon: 'M13 10V3L4 14h7v7l9-11h-7z' }
+      ];
+
+      container.innerHTML = cards.map(card => `
+        <div class="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
+          <div class="flex items-center">
+            <div class="w-10 h-10 bg-${card.color}-100 rounded-lg flex items-center justify-center">
+              <svg class="w-5 h-5 text-${card.color}-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${card.icon}"></path>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-500">${card.label}</p>
+              <p class="text-2xl font-bold text-gray-900">${card.value}</p>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function addLog(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      logs.unshift(`[${timestamp}] ${message}`);
+      if (logs.length > 100) logs.pop();
+      renderLogs();
+    }
+
+    function renderLogs() {
+      const container = document.getElementById('logs-container');
+      if (logs.length === 0) {
+        container.innerHTML = '<div class="text-gray-500">No logs yet. Make a request through OpenCode to see logs here.</div>';
+        return;
+      }
+      container.innerHTML = logs.map(log => `<div>${escapeHtml(log)}</div>`).join('');
+    }
+
+    function clearLogs() {
+      logs = [];
+      renderLogs();
+    }
+
+    // OpenCode Config
+    function updateOpenCodeConfig() {
+      const config = {
+        "provider": {
+          "local-manager": {
+            "type": "openai",
+            "options": {
+              "baseURL": "http://localhost:3000/v1",
+              "apiKey": "local-manager"
+            },
+            "models": ["openrouter/*", "groq/*", "deepseek/*", "gemini/*", "together/*"]
+          }
+        }
+      };
+      document.getElementById('opencode-config').textContent = JSON.stringify(config, null, 2);
+    }
+
+    async function copyConfig() {
+      const config = document.getElementById('opencode-config').textContent;
+      await navigator.clipboard.writeText(config);
+      const btn = document.getElementById('copy-config-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy Configuration', 2000);
+    }
+
+    // Export/Import
+    function exportData() {
+      const data = { keys: keys.map(k => ({ ...k, key: k.key.replace(/•/g, '') })), exportedAt: new Date().toISOString() };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `api-keys-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('Exported keys to JSON');
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const data = JSON.parse(event.target.result);
+          if (data.keys && Array.isArray(data.keys)) {
+            for (const key of data.keys) {
+              if (key.key && !key.key.startsWith('•')) {
+                await apiFetch('/keys', {
+                  method: 'POST',
+                  body: JSON.stringify({ provider: key.provider, name: key.name, key: key.key })
+                });
+              }
+            }
+            addLog(`Imported ${data.keys.length} keys`);
+            await loadKeys();
+            await loadStats();
+          }
+        } catch (err) {
+          alert(`Import failed: ${err.message}`);
+        }
+        e.target.value = '';
+      };
+      reader.readAsText(file);
+    }
+
+    // Periodic refresh
+    function startPeriodicRefresh() {
+      setInterval(async () => {
+        await loadKeys();
+        await loadStats();
+      }, 5000);
+    }
+
+    // Helpers
+    function getProviderColor(provider) {
+      const colors = { openrouter: 'purple', groq: 'orange', deepseek: 'blue', gemini: 'indigo', together: 'pink' };
+      return colors[provider] || 'gray';
+    }
+
+    function getProviderIcon(provider) {
+      const icons = {
+        openrouter: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 7a1 1 0 10-2 0v5a1 1 0 00.293.707l3 3a1 1 0 001.414 0l3-3A1 1 0 0011 12V9z"/></svg>',
+        groq: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 2a6 6 0 110 12 6 6 0 010-12z"/></svg>',
+        deepseek: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM7 10h6v2H7v-2z"/></svg>',
+        gemini: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm3.707 9.293a1 1 0 00-1.414 0L9 12.586 7.707 11.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg>',
+        together: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM7 10h6v2H7v-2z"/></svg>'
+      };
+      return icons[provider] || '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16z"/></svg>';
+    }
+
+    function getStatusLabel(status) {
+      const labels = { active: 'Active', cooldown: 'Cooldown', disabled: 'Disabled' };
+      return labels[status] || status;
+    }
+
+    function formatCooldown(timestamp) {
+      const remaining = Math.max(0, Math.ceil((timestamp - Date.now()) / 1000));
+      if (remaining <= 0) return 'expiring...';
+      return `${remaining}s`;
+    }
+
+    function formatDate(isoString) {
+      const date = new Date(isoString);
+      const now = new Date();
+      const diff = now - date;
+      if (diff < 60000) return 'Just now';
+      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+      return date.toLocaleDateString();
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
