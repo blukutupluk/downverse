@@ -13,6 +13,12 @@ set -uo pipefail
 # Tahan CPU tetap hidup saat layar mati (Android Doze).
 command -v termux-wake-lock >/dev/null 2>&1 && termux-wake-lock
 
+# Pastikan SEMUA provider & service lokal aktif sebelum buka OpenCode
+# (Termux:Widget tidak membaca ~/.bashrc, jadi dipanggil eksplisit di sini).
+if [ -x "$HOME/bin/start-all-services" ]; then
+  "$HOME/bin/start-all-services" >/dev/null 2>&1
+fi
+
 ACTION="open"
 
 usage() {

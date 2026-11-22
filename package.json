@@ -12,10 +12,29 @@
     "setup-opencode": "node bin/integrate-opencode.js"
   },
   "dependencies": {
+    "@remotion/captions": "^4.0.545",
+    "@remotion/install-whisper-cpp": "^4.0.545",
+    "cors": "^2.8.5",
     "express": "^4.19.2",
-    "cors": "^2.8.5"
+    "remotion": "^4.0.545"
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "bin": {
+    "api-key-manager": "bin/cli.js"
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blukutupluk/downverse.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/blukutupluk/downverse/issues"
+  },
+  "homepage": "https://github.com/blukutupluk/downverse#readme"
 }
