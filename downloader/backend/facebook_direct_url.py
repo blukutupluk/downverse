@@ -8,10 +8,11 @@ Halaman reel tetap berisi URL progresif di dalam blob Relay `data-sjs`.
 Usage:
     python3 facebook_direct_url.py URL COOKIE_FILE
 
-Stdout: satu baris URL MP4 langsung (hanya URL, tanpa teks lain).
+Stdout: dua baris — URL MP4 langsung, lalu ID video untuk nama file pendek.
 Stderr: pesan error.
 """
 
+import hashlib
 import json
 import re
 import sys
@@ -83,6 +84,28 @@ def choose_url(result):
     return None
 
 
+def find_video_id(final_url, html, original_url):
+    """Ambil ID numerik Facebook untuk nama file yang pendek dan stabil."""
+    patterns = (
+        r"/reel/(\d+)",
+        r"/videos?/(\d+)",
+        r"[?&]v=(\d+)",
+        r'"video_id"\s*:\s*"?(\d+)"?',
+    )
+    for text in (final_url or "", html):
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(1)
+    # Fallback deterministik kalau ID tidak ketemu di halaman.
+    return hashlib.sha1(original_url.encode("utf-8")).hexdigest()[:12]
+
+
+def safe_name(value):
+    """Bersihkan ID jadi karakter aman untuk nama file."""
+    return re.sub(r"[^0-9A-Za-z_-]", "", value or "")[:64] or "video"
+
+
 def main():
     if len(sys.argv) != 3:
         print("Usage: facebook_direct_url.py URL COOKIE_FILE", file=sys.stderr)
@@ -106,14 +129,17 @@ def main():
         )
         response.raise_for_status()
         html = response.text
+        final_url = getattr(response, "url", "") or ""
     except Exception as exc:
         print(f"Gagal mengambil halaman Facebook: {exc}", file=sys.stderr)
         return 4
 
+    video_id = safe_name(find_video_id(final_url, html, url))
     for result in collect_results(html):
         direct = choose_url(result)
         if direct:
             print(direct)
+            print(video_id)
             return 0
 
     print("URL video tidak ditemukan di halaman Facebook", file=sys.stderr)

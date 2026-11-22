@@ -35,13 +35,23 @@ resolve_facebook_direct_url() {
   [[ -d "$cookie_dir" ]] && binds+=(--bind "$cookie_dir:$cookie_dir")
   [[ -d "$BASE_DIR" ]] && binds+=(--bind "$BASE_DIR:$BASE_DIR")
 
-  local out
+  local out direct vid
   if ! out="$(proot-distro login "${binds[@]}" "$PROOT_DISTRO" -- \
       "$PROOT_VENV/bin/python" "$helper" "$url" "$cookie" 2>>"$LOG_DIR/facebook-direct.log")"; then
     return 1
   fi
-  [[ "$out" == http://* || "$out" == https://* ]] || return 1
-  printf '%s\n' "$out"
+  if [[ "$out" == *$'\n'* ]]; then
+    direct="${out%%$'\n'*}"
+    vid="${out#*$'\n'}"
+  else
+    direct="$out"
+    vid=""
+  fi
+  [[ "$direct" == http://* || "$direct" == https://* ]] || return 1
+  vid="${vid//[^0-9A-Za-z_-]/}"
+  vid="${vid:0:64}"
+  [[ -n "$vid" ]] || vid="video"
+  printf '%s\n%s\n' "$direct" "$vid"
 }
 
 run_ytdlp() {
@@ -56,11 +66,33 @@ run_ytdlp() {
   if proot_run "${cmd[@]}"; then rc=0; else rc=$?; fi
 
   if [[ $rc -ne 0 && "$label" == "Facebook" ]]; then
-    local direct
-    if direct="$(resolve_facebook_direct_url "$url" "$cookie")"; then
+    local resolved direct vid
+    if resolved="$(resolve_facebook_direct_url "$url" "$cookie")"; then
+      direct="${resolved%%$'\n'*}"
+      vid="${resolved#*$'\n'}"
       ui_warn "yt-dlp gagal parse Facebook. Mencoba URL langsung dari halaman..."
-      log_info "facebook direct fallback: ${direct:0:120}"
+      log_info "facebook direct fallback: ${direct:0:120} id=$vid"
       cmd[-1]="$direct"
+
+      # URL CDN jauh lebih panjang dari batas nama file. Karena yt-dlp generic
+      # memakai URL sebagai %(title)s dan %(id)s, ganti template -o supaya
+      # memakai ID numerik Facebook yang pendek.
+      local i=0 template="" dir=""
+      while (( i < ${#cmd[@]} )); do
+        if [[ "${cmd[$i]}" == "-o" || "${cmd[$i]}" == "--output" ]]; then
+          template="${cmd[$((i + 1))]}"
+          if [[ "$template" == */* ]]; then dir="${template%/*}"; else dir="."; fi
+          cmd[$((i + 1))]="$dir/facebook_${vid}.%(ext)s"
+          break
+        fi
+        i=$((i + 1))
+      done
+      if [[ -z "$dir" ]]; then
+        dir="$OUTPUT_ROOT/Facebook"
+        mkdir -p "$dir"
+        cmd+=(-o "$dir/facebook_${vid}.%(ext)s")
+      fi
+
       if proot_run "${cmd[@]}"; then rc=0; else rc=$?; fi
     else
       log_error "facebook direct fallback gagal (lihat logs/facebook-direct.log)"
