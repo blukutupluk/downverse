@@ -9,6 +9,7 @@
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![yt-dlp](https://img.shields.io/badge/yt--dlp-FF0000?style=for-the-badge&logo=youtube&logoColor=white)
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)
+[![Cara Install](https://img.shields.io/badge/Cara_Install-INSTALL.md-2ea44f?style=for-the-badge&logo=gnubash&logoColor=white)](INSTALL.md)
 
 </div>
 
@@ -107,9 +108,9 @@ Dependency utama:
 
 ---
 
-## 🚀 Instalasi
+## ⚡ Cara Install
 
-> Setup backend cukup dilakukan sekali.
+> Panduan lengkap (konfigurasi, update, uninstall, troubleshooting): **[INSTALL.md](INSTALL.md)**
 
 ### 1. Clone repo
 
@@ -126,7 +127,7 @@ pkg install -y bash fish python proot-distro proot ffmpeg curl wget termux-tools
 termux-setup-storage
 ```
 
-### 3. Siapkan Debian dan tool media
+### 3. Siapkan Debian + tool media (sekali saja)
 
 ```bash
 proot-distro install debian
@@ -142,44 +143,22 @@ proot-distro login debian -- bash -lc \
    yt-dlp gallery-dl spotdl playwright requests'
 ```
 
-### 4. Sesuaikan konfigurasi
-
-Edit `downloader/config.sh`:
+### 4. Sesuaikan SD card
 
 ```bash
-nano downloader/config.sh
+ls /storage/                 # cek path SD card yang tersedia
+nano downloader/config.sh    # ubah SDCARD_ROOT sesuai path HP kamu
 ```
-
-Yang perlu dicek:
-
-| Variabel | Default | Keterangan |
-|----------|---------|------------|
-| `PROOT_DISTRO` | `debian` | Nama distro proot |
-| `PROOT_VENV` | `/opt/media-downloader-venv` | Lokasi Python venv di Debian |
-| `SDCARD_ROOT` | `/storage/7544-8C33` | Path SD card kamu |
-| `OUTPUT_ROOT` | `$SDCARD_ROOT/output` | Folder hasil download |
-| `COOKIE_DIR` | `$HOME/cookies` | Folder file cookie |
-| `INSTALLER` | path skrip setup | Skrip setup/perbaikan milikmu |
-
-> `INSTALLER` dan marker `~/.media-downloader-ready` dipakai launcher untuk memastikan backend sudah siap. Setelah setup manual selesai, buat marker dengan:
->
-> ```bash
-> touch ~/.media-downloader-ready
-> ```
 
 ### 5. Jalankan
 
 ```bash
+touch ~/.media-downloader-ready
+bash downloader.sh --check
 bash downloader.sh
 ```
 
-Atau buat shortcut:
-
-```bash
-chmod +x downloader.sh
-ln -sf "$PWD/downloader.sh" "$PREFIX/bin/downverse"
-downverse
-```
+📖 **Panduan lengkap + troubleshooting:** **[INSTALL.md](INSTALL.md)**
 
 ---
 
