@@ -8,7 +8,7 @@ SPOTDL_BIN="$PROOT_VENV/bin/spotdl"
 
 # SD card eksternal yang sudah dikonfirmasi pengguna.
 SDCARD_ROOT="${SDCARD_ROOT:-/storage/7544-8C33}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-$SDCARD_ROOT/output}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/7544-8C33/output}"
 THREADS_OUTPUT="$OUTPUT_ROOT/Threads"
 
 COOKIE_DIR="${COOKIE_DIR:-$HOME/cookies}"
@@ -19,6 +19,5 @@ YOUTUBE_COOKIE="${YOUTUBE_COOKIE:-$COOKIE_DIR/youtube.txt}"
 
 LOG_DIR="$BASE_DIR/logs"
 
-# Installer fondasi sudah diarsipkan dari $HOME pada 2026-11-19.
-# Semua pesan perbaikan mengarah ke sini, bukan ke ~/install.fish.
-INSTALLER="${INSTALLER:-$HOME/storage/downloads/automate/2026-11-19/arsip/home-cleanup/install.fish}"
+# Installer resmi ada di root repo. Pesan perbaikan mengarah ke sini.
+INSTALLER="${INSTALLER:-$BASE_DIR/install.sh}"

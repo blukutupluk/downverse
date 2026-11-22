@@ -17,7 +17,44 @@ Panduan lengkap memasang **Downverse** di Termux (Android).
 
 ---
 
-## 🚀 Instalasi Cepat
+## ⚡ Cara Tercepat (Installer Otomatis)
+
+```bash
+git clone https://github.com/blukutupluk/downverse.git
+cd downverse
+bash install.sh
+```
+
+Installer akan melakukan semuanya:
+
+- 📦 memasang paket Termux + dependency,
+- 🐧 menyiapkan Debian proot + Python venv,
+- 💾 mendeteksi SD card dan menulis konfigurasi,
+- 🔗 membuat shortcut `downverse`,
+- ✅ memvalidasi yt-dlp, FFmpeg, dan bind mount output.
+
+Setelah selesai:
+
+```bash
+downverse
+```
+
+### Opsi Installer
+
+| Opsi | Fungsi |
+|------|--------|
+| `bash install.sh` | Install interaktif (disarankan) |
+| `bash install.sh --yes` | Non-interaktif, jawab "ya" otomatis |
+| `bash install.sh --output PATH` | Tentukan folder output manual |
+| `bash install.sh --dry-run` | Tampilkan langkah tanpa mengubah sistem |
+| `bash install.sh --help` | Tampilkan bantuan |
+
+> ⏱️ Proses ini bisa memakan waktu 10–30 menit tergantung koneksi dan perangkat.
+> 🔁 Aman dijalankan ulang — installer bersifat idempotent.
+
+---
+
+## 🛠️ Instalasi Manual (Alternatif)
 
 ### 1️⃣ Clone repo
 
@@ -30,7 +67,7 @@ cd downverse
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install -y bash fish python proot-distro proot ffmpeg curl wget termux-tools
+pkg install -y bash fish python proot-distro proot ffmpeg curl wget git termux-tools
 termux-setup-storage
 ```
 
@@ -115,6 +152,8 @@ SDCARD_ROOT=/storage/ABCD-1234 bash downloader.sh
 
 ## 🔗 Bikin Shortcut `downverse`
 
+> 💡 `install.sh` sudah membuat shortcut ini otomatis. Langkah di bawah hanya untuk instalasi manual.
+
 Biar tidak perlu mengetik path panjang:
 
 ```bash
@@ -150,9 +189,10 @@ Untuk konten yang membutuhkan login, ekspor cookie format **Netscape `cookies.tx
 ```bash
 cd ~/downverse
 git pull origin master
+bash install.sh
 ```
 
-Kalau ada perubahan dependency, ulangi langkah **3️⃣** (setup Debian + venv).
+`install.sh` akan memperbarui dependency dan konfigurasi tanpa menghapus hasil download.
 
 ---
 
@@ -180,8 +220,12 @@ rm -f "$PREFIX/bin/downverse"
 
 | Masalah | Solusi |
 |---------|--------|
-| `DEPENDENSI HILANG` | Jalankan `pkg install` sesuai daftar di langkah 2️⃣. |
-| `SETUP BELUM SELESAI` | Buat marker: `touch ~/.media-downloader-ready`. |
+| `install.sh` gagal saat `pkg update` | Jalankan `termux-change-repo`, pilih mirror resmi, lalu ulangi. |
+| Installer berhenti saat `pkg upgrade` | Jalankan `pkg update && pkg upgrade -y` manual, lalu ulangi `bash install.sh`. |
+| Ingin cek langkah tanpa mengubah sistem | `bash install.sh --dry-run`. |
+| `downverse: command not found` | Jalankan ulang `bash install.sh`, atau cek `ls -l "$PREFIX/bin/downverse"`. |
+| `DEPENDENSI HILANG` | Jalankan `pkg install` sesuai daftar di langkah 2️⃣, atau ulangi `bash install.sh`. |
+| `SETUP BELUM SELESAI` | Buat marker: `touch ~/.media-downloader-ready`, atau ulangi `bash install.sh`. |
 | SD card tidak terlihat | Jalankan `termux-setup-storage`, lalu sesuaikan `SDCARD_ROOT`. |
 | Output tidak writable | Periksa izin Android dan pastikan folder output bisa ditulis. |
 | Bind mount tidak cocok | Jangan pakai mode proot isolated; path output harus sama di Termux dan Debian. |

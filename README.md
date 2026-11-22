@@ -104,61 +104,39 @@ Dependency utama:
 |-----------|-----------------|
 | `bash`, `fish`, `python` | `ffmpeg`, `python3`, `python3-venv`, `python3-pip` |
 | `proot-distro`, `proot` | `chromium`, `fonts-liberation` |
-| `ffmpeg`, `ffprobe`, `curl`, `wget` | `yt-dlp`, `gallery-dl`, `spotdl`, `playwright`, `requests` |
+| `ffmpeg`, `ffprobe`, `curl`, `wget`, `git` | `yt-dlp`, `gallery-dl`, `spotdl`, `playwright`, `requests` |
 
 ---
 
 ## ⚡ Cara Install
 
-> Panduan lengkap (konfigurasi, update, uninstall, troubleshooting): **[INSTALL.md](INSTALL.md)**
-
-### 1. Clone repo
+**Cara tercepat — satu perintah:**
 
 ```bash
 git clone https://github.com/blukutupluk/downverse.git
 cd downverse
+bash install.sh
 ```
 
-### 2. Pasang dependency Termux
+`install.sh` otomatis:
+
+- 📦 memasang paket Termux + dependency,
+- 🐧 menyiapkan Debian proot + Python venv,
+- 💾 mendeteksi SD card dan menulis konfigurasi,
+- 🔗 membuat shortcut `downverse`,
+- ✅ memvalidasi yt-dlp, FFmpeg, dan bind mount output.
+
+Setelah selesai, jalankan:
 
 ```bash
-pkg update && pkg upgrade -y
-pkg install -y bash fish python proot-distro proot ffmpeg curl wget termux-tools
-termux-setup-storage
+downverse
 ```
 
-### 3. Siapkan Debian + tool media (sekali saja)
+> ⏱️ Butuh koneksi internet dan ruang ~1–2 GB.
+> 🔍 Cek dulu tanpa mengubah apa pun: `bash install.sh --dry-run`
+> ⚙️ Pilih folder output manual: `bash install.sh --output /storage/XXXX-XXXX/output`
 
-```bash
-proot-distro install debian
-
-proot-distro login debian -- bash -lc \
-  'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  ca-certificates curl wget ffmpeg python3 python3-venv python3-pip \
-  chromium fonts-liberation'
-
-proot-distro login debian -- bash -lc \
-  'python3 -m venv /opt/media-downloader-venv && \
-   /opt/media-downloader-venv/bin/pip install -U pip setuptools wheel \
-   yt-dlp gallery-dl spotdl playwright requests'
-```
-
-### 4. Sesuaikan SD card
-
-```bash
-ls /storage/                 # cek path SD card yang tersedia
-nano downloader/config.sh    # ubah SDCARD_ROOT sesuai path HP kamu
-```
-
-### 5. Jalankan
-
-```bash
-touch ~/.media-downloader-ready
-bash downloader.sh --check
-bash downloader.sh
-```
-
-📖 **Panduan lengkap + troubleshooting:** **[INSTALL.md](INSTALL.md)**
+📖 **Langkah manual, konfigurasi, update, uninstall, dan troubleshooting:** **[INSTALL.md](INSTALL.md)**
 
 ---
 
@@ -211,7 +189,10 @@ Untuk konten yang membutuhkan login, ekspor cookie dalam format **Netscape `cook
 
 ```text
 downverse/
+├── install.sh                 # installer otomatis (satu perintah)
 ├── downloader.sh              # launcher utama
+├── README.md                  # dokumentasi utama
+├── INSTALL.md                 # panduan install lengkap
 ├── downloader/
 │   ├── config.sh              # konfigurasi path, distro, cookie
 │   ├── lib/                   # UI, logging, proot, validasi

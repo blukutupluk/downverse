@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Termux Media Downloader - launcher utama.
 set -euo pipefail
-BASE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
 readonly BASE_DIR VERSION="2026.11.21"
 
 # ===== Colors =====
