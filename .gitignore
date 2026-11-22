@@ -9,7 +9,7 @@
 
 # --- Proyek aktif (satu-satunya yang dilacak) ---
 !/.gitignore
-!/README.txt
+!/README.md
 !/install.fish
 !/downloader.sh
 !/downloader/
