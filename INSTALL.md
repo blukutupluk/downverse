@@ -230,6 +230,7 @@ rm -f "$PREFIX/bin/downverse"
 | Output tidak writable | Periksa izin Android dan pastikan folder output bisa ditulis. |
 | Bind mount tidak cocok | Jangan pakai mode proot isolated; path output harus sama di Termux dan Debian. |
 | FFmpeg gagal dijalankan | `pkg update && pkg upgrade -y`, lalu cek `ffmpeg -version`. |
+| Facebook `Cannot parse data` | Otomatis ada fallback: yt-dlp mengambil URL MP4 langsung dari halaman. Kalau tetap gagal, perbarui `~/cookies/facebook.txt` lewat browser. Detail di `downloader/logs/facebook-direct.log`. |
 | Konten minta login | Tambahkan file cookie Netscape yang sesuai. |
 | Chromium/Playwright error | Pastikan `chromium` terpasang di Debian dan `playwright` ada di venv. |
 | Cek cepat semua dependency | `bash downloader.sh --check`. |

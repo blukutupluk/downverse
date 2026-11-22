@@ -20,15 +20,53 @@ check_host() {
   return 0
 }
 
+# Facebook terkadang mengubah struktur payload videonya sampai yt-dlp gagal
+# ("Cannot parse data"), padahal URL MP4-nya masih ada di halaman. Ambil URL itu
+# sebagai fallback lalu serahkan tetap ke yt-dlp untuk download/konversi.
+resolve_facebook_direct_url() {
+  local url="$1" cookie="$2"
+  local helper="$BASE_DIR/downloader/backend/facebook_direct_url.py"
+  [[ -f "$helper" ]] || return 1
+  proot_require || return $?
+
+  local cookie_dir
+  cookie_dir="$(dirname -- "$cookie")"
+  local -a binds=()
+  [[ -d "$cookie_dir" ]] && binds+=(--bind "$cookie_dir:$cookie_dir")
+  [[ -d "$BASE_DIR" ]] && binds+=(--bind "$BASE_DIR:$BASE_DIR")
+
+  local out
+  if ! out="$(proot-distro login "${binds[@]}" "$PROOT_DISTRO" -- \
+      "$PROOT_VENV/bin/python" "$helper" "$url" "$cookie" 2>>"$LOG_DIR/facebook-direct.log")"; then
+    return 1
+  fi
+  [[ "$out" == http://* || "$out" == https://* ]] || return 1
+  printf '%s\n' "$out"
+}
+
 run_ytdlp() {
   local label="$1" cookie="$2"
   shift 2
+  local url="${@: -1}"
   local -a cmd=("$YTDLP_BIN" --newline --ignore-errors --retries 3 --fragment-retries 3 --socket-timeout 30)
   if [[ -n "$cookie" && -f "$cookie" ]]; then cmd+=(--cookies "$cookie"); fi
   cmd+=("$@")
   log_info "yt-dlp start label=$label"
-  proot_run "${cmd[@]}"
-  local rc=$?
+  local rc=0
+  if proot_run "${cmd[@]}"; then rc=0; else rc=$?; fi
+
+  if [[ $rc -ne 0 && "$label" == "Facebook" ]]; then
+    local direct
+    if direct="$(resolve_facebook_direct_url "$url" "$cookie")"; then
+      ui_warn "yt-dlp gagal parse Facebook. Mencoba URL langsung dari halaman..."
+      log_info "facebook direct fallback: ${direct:0:120}"
+      cmd[-1]="$direct"
+      if proot_run "${cmd[@]}"; then rc=0; else rc=$?; fi
+    else
+      log_error "facebook direct fallback gagal (lihat logs/facebook-direct.log)"
+    fi
+  fi
+
   if [[ $rc -eq 0 ]]; then log_info "yt-dlp success label=$label"; else log_error "yt-dlp failed label=$label rc=$rc"; fi
   return "$rc"
 }
