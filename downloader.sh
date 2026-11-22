@@ -1,108 +1,168 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Termux Media Downloader - launcher utama.
-# Backend umum: Debian/PRoot. Threads: Chromium + Playwright + capture network.
+set -euo pipefail
 BASE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly BASE_DIR VERSION="2026.11.21"
 
-# Jangan aktifkan set -u: kompatibilitas dengan variabel UI opsional.
+# ===== Colors =====
+readonly C_RESET='\033[0m'
+readonly C_BOLD='\033[1m'
+readonly C_DIM='\033[2m'
+readonly C_RED='\033[31m'
+readonly C_GREEN='\033[32m'
+readonly C_YELLOW='\033[33m'
+readonly C_BLUE='\033[34m'
+readonly C_MAGENTA='\033[35m'
+readonly C_CYAN='\033[36m'
+readonly C_WHITE='\033[37m'
+readonly C_GRAY='\033[90m'
+
+# ===== Load libraries =====
 for _lib in config.sh lib/ui.sh lib/logging.sh lib/proot.sh lib/common.sh lib/checks.sh; do
-  if [[ ! -f "$BASE_DIR/downloader/$_lib" ]]; then
-    printf 'File library tidak ditemukan: %s\n' "$BASE_DIR/downloader/$_lib" >&2
-    printf 'Instalasi rusak. Jalankan ulang: fish ~/install.fish\n' >&2
-    exit 78
-  fi
-done
-unset _lib
-
-source "$BASE_DIR/downloader/config.sh"
-source "$BASE_DIR/downloader/lib/ui.sh"
-source "$BASE_DIR/downloader/lib/logging.sh"
-source "$BASE_DIR/downloader/lib/proot.sh"
-source "$BASE_DIR/downloader/lib/common.sh"
-source "$BASE_DIR/downloader/lib/checks.sh"
-
-if [[ ! -f "$HOME/.media-downloader-ready" ]]; then
-  printf '\n%b\n' "${RED}${BOLD}SETUP BELUM SELESAI / BELUM LOLOS VERIFIKASI.${RESET}"
-  printf 'Jalankan installer fondasi: fish ~/install.fish\n'
-  printf 'Launcher dihentikan agar tidak menjalankan backend yang belum siap.\n'
-  exit 78
-fi
-
-# Folder output baru dibuat setelah status kesiapan lolos. Jika kartu SD belum
-# ter-mount, launcher tidak dihentikan agar Dependency Check tetap bisa dipakai.
-STARTUP_NOTICE=""
-if ! ensure_system_dirs 2>/dev/null; then
-  STARTUP_NOTICE+="${RED}${BOLD}PERINGATAN: folder output gagal disiapkan: ${OUTPUT_ROOT}${RESET}"$'\n'
-  STARTUP_NOTICE+="            Periksa akses kartu SD (${SDCARD_ROOT}) lalu jalankan: fish ~/install.fish"$'\n'
-fi
-
-if ! command -v proot-distro >/dev/null 2>&1; then
-  STARTUP_NOTICE+="${RED}${BOLD}PERINGATAN: proot-distro belum tersedia di Termux.${RESET}"$'\n'
-  STARTUP_NOTICE+="            Perbaikan: pkg update -y; pkg install -y proot-distro; fish ~/install.fish"$'\n'
-fi
-
-# Muat modul saat dipilih saja, dengan validasi file dan nama fungsi.
-run_module() {
-  local module="$1" func="$2" path
-  path="$BASE_DIR/downloader/modules/$module.sh"
-  if [[ ! -f "$path" ]]; then
-    ui_error "Modul tidak ditemukan: $path"
-    sleep 2
-    return 1
-  fi
+  [[ -f "$BASE_DIR/downloader/$_lib" ]] || { echo -e "${C_RED}${C_BOLD}FATAL:${C_RESET} Library hilang: $_lib" >&2; exit 78; }
   # shellcheck source=/dev/null
-  source "$path"
-  if ! declare -F "$func" >/dev/null 2>&1; then
-    ui_error "Fungsi $func tidak ditemukan di $module.sh"
-    sleep 2
-    return 1
-  fi
-  "$func"
+  source "$BASE_DIR/downloader/$_lib"
+done
+
+# ===== Validate critical config =====
+: "${INSTALLER:?}" "${SDCARD_ROOT:?}" "${OUTPUT_ROOT:?}" "${PROOT_DISTRO:?}" "${PROOT_VENV:?}"
+[[ -f "$INSTALLER" ]] || { echo -e "${C_RED}${C_BOLD}FATAL:${C_RESET} Installer tidak ditemukan: $INSTALLER" >&2; exit 78; }
+
+# ===== Startup dependency check =====
+for cmd in proot-distro ffmpeg ffprobe python3 git; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo -e "${C_RED}DEPENDENSI HILANG:${C_RESET} $cmd" >&2; exit 1; }
+done
+
+# ===== Trap cleanup =====
+CHILD_PIDS=()
+trap 'for p in "${CHILD_PIDS[@]}"; do kill -TERM "$p" 2>/dev/null; done; wait 2>/dev/null; exit 130' INT TERM
+
+# ===== Ready flag =====
+[[ -f "$HOME/.media-downloader-ready" ]] || {
+  echo -e "\n${C_RED}${C_BOLD}SETUP BELUM SELESAI${C_RESET}"
+  echo -e "Jalankan: ${C_CYAN}fish $INSTALLER${C_RESET}"
+  exit 78
 }
 
-while true; do
+# ===== Module runner =====
+run_module() {
+  local m="${1:-}" f="${2:-}" p
+  p="$BASE_DIR/downloader/modules/$m.sh"
+  [[ -n "$m" && -n "$f" ]] || { ui_error "Modul tidak valid."; sleep 2; return 1; }
+  [[ -f "$p" ]] || { ui_error "Modul tidak ditemukan: $p"; sleep 2; return 1; }
+  source "$p"
+  declare -F "$f" >/dev/null 2>&1 || { ui_error "Fungsi $f tidak ada di $m.sh"; sleep 2; return 1; }
+  "$f"
+}
+
+# ===== CLI flags =====
+if [[ "${1:-}" == "--check" ]]; then
+  echo -e "${C_CYAN}Termux Media Downloader v$VERSION${C_RESET}"
+  echo -e "${C_GREEN}OK:${C_RESET} config & dependencies"
+  exit 0
+fi
+if [[ "${1:-}" == "--version" ]]; then
+  echo "v$VERSION"
+  exit 0
+fi
+
+# ===== Menu data: id|module|function|name|description|icon =====
+MENU_ITEMS=(
+  "1|youtube|module_youtube|YouTube|Video tunggal & playlist|▶"
+  "2|instagram|module_instagram|Instagram|Video / audio / post|📷"
+  "3|facebook|module_facebook|Facebook|Video / audio / post|📘"
+  "4|tiktok|module_tiktok|TikTok|Video & media|🎵"
+  "5|threads|module_threads|Threads|Video saja|🧵"
+  "6|spotify|module_spotify|Spotify / SpotDL|Track / album / playlist|🎵"
+  "7|carousel|module_carousel|Carousel|Gallery downloader|🖼"
+  "8|audio|module_audio|Extract Audio|Konversi MP3 / WAV|🎧"
+  "9|video_splitter|module_video_splitter|Video Splitter 10s|Klip 10 detik|✂"
+  "10|bulk|module_bulk|Download Massal|Banyak URL dari .txt|📦"
+  "11|audio_extractor|module_audio_extractor|Audio Extractor + Transcriber|MP3 + TXT dari video|🎙"
+  "12|web_scraper|module_web_scraper|Web Scraper / Downloader|Scrape video dari situs bandel|🌐"
+)
+
+# ===== Helpers =====
+print_header() {
   clear
-  if [[ -n "$STARTUP_NOTICE" ]]; then
-    printf '%b\n' "$STARTUP_NOTICE"
-    STARTUP_NOTICE=""
-  fi
-  printf '\n%b\n' "${BOLD}${CYAN}  +----------------------------------------------+${RESET}"
-  printf '%b\n' "${BOLD}${CYAN}  |          TERMUX MEDIA DOWNLOADER             |${RESET}"
-  printf '%b\n' "${BOLD}${BLUE}  |       TERMUX LAUNCHER  /  DEBIAN BACKEND     |${RESET}"
-  printf '%b\n' "${BOLD}${CYAN}  +----------------------------------------------+${RESET}"
+  local w=52
+  local title=" TERMUX MEDIA DOWNLOADER v$VERSION "
+  local pad=$(( (w - ${#title}) / 2 ))
+  printf '%b\n' "${C_MAGENTA}${C_BOLD}╔$(printf '═%.0s' $(seq 1 $w))╗${C_RESET}"
+  printf '%b' "${C_MAGENTA}${C_BOLD}║${C_RESET}"
+  printf '%*s' $pad ""
+  printf '%b' "${C_WHITE}${C_BOLD}$title${C_RESET}"
+  printf '%*s' $((w - pad - ${#title})) ""
+  printf '%b\n' "${C_MAGENTA}${C_BOLD}║${C_RESET}"
+  printf '%b\n' "${C_MAGENTA}${C_BOLD}╚$(printf '═%.0s' $(seq 1 $w))╝${C_RESET}"
+  echo
+}
 
-  printf '\n%b\n' "${BOLD}${BLUE}  DOWNLOAD MEDIA${RESET}"
-  ui_line
-  ui_item "01" "YouTube" "Video tunggal dan playlist"
-  ui_item "02" "Instagram" "Video / audio / post yang didukung"
-  ui_item "03" "Facebook" "Video / audio / post yang didukung"
-  ui_item "04" "TikTok" "Video dan media yang didukung"
-  ui_item "05" "Threads" "Video saja; tanpa gambar dan tanpa traversal carousel"
+print_section() {
+  local title="$1" color="$2"
+  echo -e "${color}${C_BOLD}  $title${C_RESET}"
+  echo -e "${C_GRAY}  $(printf '─%.0s' $(seq 1 50))${C_RESET}"
+}
 
-  printf '\n%b\n' "${BOLD}${YELLOW}  SPECIAL TOOLS${RESET}"
-  ui_line
-  ui_item "06" "Extract Audio" "Konversi MP3 / WAV"
-  ui_item "07" "Spotify / SpotDL" "Track / album / playlist"
-  ui_item "08" "Carousel" "Gallery downloader untuk platform yang didukung"
+print_item() {
+  local num="$1" name="$2" desc="$3" icon="$4"
+  printf '  %b[%2s]%b %s %-28s %b%s%b\n' \
+    "${C_CYAN}${C_BOLD}" "$num" "${C_RESET}" \
+    "$icon" "$name" \
+    "${C_GRAY}" "$desc" "${C_RESET}"
+}
 
-  printf '\n%b\n' "${BOLD}${GREEN}  SYSTEM${RESET}"
-  ui_line
-  ui_item "09" "Dependency Check" "Periksa Termux, Debian, Chromium, Playwright, FFmpeg"
+# ===== Main loop =====
+while true; do
+  print_header
 
-  printf '\n  %b[00]%b  Keluar\n' "${RED}${BOLD}" "$RESET"
-  printf '\n%b' "${CYAN}${BOLD}  PILIH MODUL [00-09] > ${RESET}"
+  print_section "DOWNLOAD MEDIA" "${C_BLUE}"
+  for item in "${MENU_ITEMS[@]}"; do
+    IFS='|' read -r id mod fn name desc icon <<<"$item"
+    [[ "$id" =~ ^[1-7]$ ]] && print_item "$id" "$name" "$desc" "$icon"
+  done
+  echo
+
+  print_section "SPECIAL TOOLS" "${C_YELLOW}"
+  for item in "${MENU_ITEMS[@]}"; do
+    IFS='|' read -r id mod fn name desc icon <<<"$item"
+    [[ "$id" =~ ^(8|9|10|11|12)$ ]] && print_item "$id" "$name" "$desc" "$icon"
+  done
+  echo
+
+  print_section "SYSTEM" "${C_GREEN}"
+  echo -e "  ${C_YELLOW}${C_BOLD}[⭐]${C_RESET}  🔧 Dependency Check"
+  echo
+
+  echo -e "  ${C_RED}${C_BOLD}[00]${C_RESET}  Keluar"
+  echo
+  echo -ne "${C_MAGENTA}${C_BOLD}  PILIH [00-12,⭐] > ${C_RESET}"
   IFS= read -r choice || exit 0
 
   case "$choice" in
-    1|01) run_module youtube module_youtube ;;
-    2|02) run_module instagram module_instagram ;;
-    3|03) run_module facebook module_facebook ;;
-    4|04) run_module tiktok module_tiktok ;;
-    5|05) run_module threads module_threads ;;
-    6|06) run_module audio module_audio ;;
-    7|07) run_module spotify module_spotify ;;
-    8|08) run_module carousel module_carousel ;;
-    9|09) ui_header; ui_section "DEPENDENCY CHECK"; dependency_check; ui_pause ;;
-    0|00) clear; printf '\n%b\n\n' "${GREEN}${BOLD}Sampai jumpa.${RESET}"; exit 0 ;;
-    *) ui_error "Pilihan tidak valid."; sleep 1 ;;
+    0|00)
+      clear
+      echo -e "\n${C_GREEN}${C_BOLD}Sampai jumpa.${C_RESET}\n"
+      exit 0
+      ;;
+    ⭐|star|dep)
+      ui_header
+      ui_section "DEPENDENCY CHECK"
+      dependency_check
+      ui_pause
+      ;;
+    1|2|3|4|5|6|7|8|9|10|11|12)
+      for item in "${MENU_ITEMS[@]}"; do
+        IFS='|' read -r id mod fn name desc icon <<<"$item"
+        if [[ "$id" == "$choice" ]]; then
+          run_module "$mod" "$fn"
+          break
+        fi
+      done
+      ;;
+    *)
+      ui_error "Pilihan tidak valid: $choice"
+      sleep 1
+      ;;
   esac
 done

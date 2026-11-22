@@ -22,7 +22,7 @@ proot_login() {
 proot_require() {
   if ! command -v proot-distro >/dev/null 2>&1; then
     ui_error "PRoot-Distro belum terpasang di Termux. Jalankan: pkg install -y proot-distro"
-    ui_error "Lalu selesaikan fondasi Debian: fish ~/install.fish"
+    ui_error "Lalu selesaikan fondasi Debian: fish $INSTALLER"
     return 127
   fi
   if [[ ! -d "$SDCARD_ROOT" || ! -d "$OUTPUT_ROOT" || ! -w "$OUTPUT_ROOT" ]]; then

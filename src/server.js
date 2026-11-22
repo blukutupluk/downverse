@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { initStore, getKeys } from './store.js';
 import { forwardRequest } from './proxy.js';
+import apiRouter from './routes/api.js';
 
 export function createServer(options = {}) {
   const app = express();
@@ -20,6 +21,9 @@ export function createServer(options = {}) {
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
+
+  // Dashboard API routes
+  app.use('/api', apiRouter);
 
   // OpenAI compatible endpoints
   app.get('/v1/models', (req, res) => {

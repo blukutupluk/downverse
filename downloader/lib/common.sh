@@ -2,7 +2,8 @@ ensure_system_dirs() {
   mkdir -p "$OUTPUT_ROOT" "$LOG_DIR" "$COOKIE_DIR" \
     "$OUTPUT_ROOT/YouTube" "$OUTPUT_ROOT/Instagram" "$OUTPUT_ROOT/Facebook" \
     "$OUTPUT_ROOT/TikTok" "$OUTPUT_ROOT/Threads" "$OUTPUT_ROOT/Audio/MP3" \
-    "$OUTPUT_ROOT/Audio/WAV" "$OUTPUT_ROOT/Spotify" "$OUTPUT_ROOT/Carousel"
+    "$OUTPUT_ROOT/Audio/WAV" "$OUTPUT_ROOT/Spotify" "$OUTPUT_ROOT/Carousel" \
+    "$OUTPUT_ROOT/WebScraper"
 }
 
 ask_url() {

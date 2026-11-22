@@ -5,11 +5,18 @@ import crypto from 'node:crypto';
 
 let dbPath = path.join(process.cwd(), 'data', 'db.json');
 let cache = { keys: [] };
+let initialized = false;
 
 export async function initStore(customPath) {
   if (customPath) {
     dbPath = customPath;
   }
+  
+  // If already initialized with the same path, skip re-reading
+  if (initialized && customPath === dbPath) {
+    return;
+  }
+  
   const dir = path.dirname(dbPath);
   await fsPromises.mkdir(dir, { recursive: true });
   try {
@@ -22,6 +29,7 @@ export async function initStore(customPath) {
     cache = { keys: [] };
     await saveStore();
   }
+  initialized = true;
 }
 
 async function saveStore() {

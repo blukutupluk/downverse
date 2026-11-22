@@ -22,7 +22,7 @@ dependency_check() {
     printf '  [OK] Filesystem output: %s\n' "$OUTPUT_ROOT"
   else
     printf '  [MISSING] Debian belum siap atau bind SD card tidak cocok\n'
-    printf '  [FIX] Periksa akses SD card; jalankan: fish ~/install.fish\n'
+    printf '  [FIX] Periksa akses SD card; jalankan: fish %s\n' "$INSTALLER"
     bad=1
   fi
   if [[ $debian_ready -eq 1 ]]; then

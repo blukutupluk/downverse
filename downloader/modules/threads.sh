@@ -24,7 +24,7 @@ module_threads() {
   done
   proot_require || { ui_pause; return 1; }
   [[ -f "$cookie" ]] || { ui_error "Cookie Threads tidak ditemukan: $cookie"; ui_warn "Ekspor cookies Netscape ke ~/cookies/threads.txt dahulu."; ui_pause; return 1; }
-  proot_login test -x "$PROOT_PYTHON" >/dev/null 2>&1 || { ui_error "Python venv Debian belum siap. Jalankan install.fish."; ui_pause; return 1; }
+  proot_login test -x "$PROOT_PYTHON" >/dev/null 2>&1 || { ui_error "Python venv Debian belum siap. Jalankan fish $INSTALLER"; ui_pause; return 1; }
 
   stamp="$(date +%Y%m%d_%H%M%S)"
   work="$out/.threads_work_$stamp"

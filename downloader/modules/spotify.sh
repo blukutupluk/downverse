@@ -6,7 +6,7 @@ module_spotify() {
   ask_url "Spotify URL" || { ui_pause; return 1; }
   check_host || { ui_pause; return 1; }
   proot_require || { ui_pause; return 1; }
-  if ! proot_login test -x "$SPOTDL_BIN"; then ui_error "spotdl belum tersedia di Debian. Jalankan fish ~/install.fish."; ui_pause; return 1; fi
+  if ! proot_login test -x "$SPOTDL_BIN"; then ui_error "spotdl belum tersedia di Debian. Jalankan fish $INSTALLER."; ui_pause; return 1; fi
   run_spotdl download "$URL" --output "$OUTPUT_ROOT/Spotify/{artist} - {title}.{output-ext}"
   local rc=$?; if [[ $rc -eq 0 ]]; then ui_ok "Spotify selesai."; else ui_error "Spotify gagal (exit $rc)."; fi
   ui_pause; return "$rc"

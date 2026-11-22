@@ -18,3 +18,7 @@ FACEBOOK_COOKIE="${FACEBOOK_COOKIE:-$COOKIE_DIR/facebook.txt}"
 YOUTUBE_COOKIE="${YOUTUBE_COOKIE:-$COOKIE_DIR/youtube.txt}"
 
 LOG_DIR="$BASE_DIR/logs"
+
+# Installer fondasi sudah diarsipkan dari $HOME pada 2026-11-19.
+# Semua pesan perbaikan mengarah ke sini, bukan ke ~/install.fish.
+INSTALLER="${INSTALLER:-$HOME/storage/downloads/automate/2026-11-19/arsip/home-cleanup/install.fish}"
