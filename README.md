@@ -1,6 +1,16 @@
+<div align="center">
+
 # 🌌 Downverse
 
-**Downloader media all-in-one untuk Termux (Android).**
+**🎬 Downloader media all-in-one untuk Termux (Android) 📱**
+
+![Platform](https://img.shields.io/badge/Platform-Termux%20%7C%20Android-000000?style=for-the-badge&logo=android&logoColor=3DDC84)
+![Bash](https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![yt-dlp](https://img.shields.io/badge/yt--dlp-FF0000?style=for-the-badge&logo=youtube&logoColor=white)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)
+
+</div>
 
 Downverse menyatukan berbagai alat downloader populer — `yt-dlp`, `gallery-dl`, `SpotDL`, `FFmpeg`, dan Playwright — ke dalam satu menu terminal yang sederhana. Unduh video, audio, dan gambar dari banyak platform, simpan langsung ke SD card, lalu olah hasilnya tanpa perlu aplikasi tambahan yang berat.
 
@@ -30,18 +40,18 @@ Cocok untuk kamu yang ingin:
 
 | # | Modul | Kemampuan | Output default |
 |---|-------|-----------|----------------|
-| 1 | **YouTube** | Video tunggal & playlist | `YouTube/` |
-| 2 | **Instagram** | Video, audio, dan post | `Instagram/` |
-| 3 | **Facebook** | Video, audio, dan post | `Facebook/` |
-| 4 | **TikTok** | Video dan media | `TikTok/` |
-| 5 | **Threads** | Video, carousel, dan semua media (Playwright) | `Threads/` |
-| 6 | **Spotify / SpotDL** | Track, album, dan playlist | `Spotify/` |
-| 7 | **Carousel** | Downloader galeri gambar | `Carousel/` |
-| 8 | **Extract Audio** | Konversi video ke MP3 / WAV | `Audio/MP3/`, `Audio/WAV/` |
-| 9 | **Video Splitter 10s** | Pecah video menjadi klip 10 detik tanpa audio | `audio/` |
-| 10 | **Download Massal** | Banyak URL dari file `.txt` (FB, IG, YT, TikTok) | folder platform |
-| 11 | **Audio Extractor + Transcriber** | MP3 tervalidasi + transkrip TXT via Gemini API | `audio-extractor/hasil-extract/` |
-| 12 | **Web Scraper / Downloader** | Scrape URL video dari situs bandel | `WebScraper/` |
+| 1 | ▶️ **YouTube** | Video tunggal & playlist | `YouTube/` |
+| 2 | 📸 **Instagram** | Video, audio, dan post | `Instagram/` |
+| 3 | 📘 **Facebook** | Video, audio, dan post | `Facebook/` |
+| 4 | 🎵 **TikTok** | Video dan media | `TikTok/` |
+| 5 | 🧵 **Threads** | Video, carousel, dan semua media (Playwright) | `Threads/` |
+| 6 | 🎧 **Spotify / SpotDL** | Track, album, dan playlist | `Spotify/` |
+| 7 | 🖼️ **Carousel** | Downloader galeri gambar | `Carousel/` |
+| 8 | 🎼 **Extract Audio** | Konversi video ke MP3 / WAV | `Audio/MP3/`, `Audio/WAV/` |
+| 9 | ✂️ **Video Splitter 10s** | Pecah video menjadi klip 10 detik tanpa audio | `audio/` |
+| 10 | 📦 **Download Massal** | Banyak URL dari file `.txt` (FB, IG, YT, TikTok) | folder platform |
+| 11 | 🎙️ **Audio Extractor + Transcriber** | MP3 tervalidasi + transkrip TXT via Gemini API | `audio-extractor/hasil-extract/` |
+| 12 | 🌐 **Web Scraper / Downloader** | Scrape URL video dari situs bandel | `WebScraper/` |
 
 ### Fitur pendukung
 
