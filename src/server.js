@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { initStore, getKeys } from './store.js';
 import { forwardRequest } from './proxy.js';
 import apiRouter from './routes/api.js';
@@ -20,6 +22,31 @@ export function createServer(options = {}) {
   // Health check
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Auto-pair: buat token OpenCode sekali pakai (5 menit) lalu redirect ke GUI.
+  // Token tidak pernah disimpan / dicetak — dipakai sekali oleh WebView.
+  app.get('/auto-pair', async (req, res) => {
+    try {
+      const execFileAsync = promisify(execFile);
+      const { stdout, stderr } = await execFileAsync('opencode', ['pair'], {
+        timeout: 20000,
+        env: process.env
+      });
+      const match = `${stdout}${stderr}`.match(
+        /http:\/\/127\.0\.0\.1:\d+\/auth\/connect\/[A-Za-z0-9._~-]+/
+      );
+      if (!match) throw new Error('pairing link tidak ditemukan');
+
+      const paired = await fetch(match[0]).then(r => r.json());
+      if (!paired.token) throw new Error('token tidak ditemukan');
+
+      const authToken = Buffer.from(`opencode:${paired.token}`).toString('base64');
+      res.redirect(302, `http://127.0.0.1:49374/?auth_token=${encodeURIComponent(authToken)}`);
+    } catch (err) {
+      console.error('auto-pair failed:', err.message);
+      res.status(503).type('text/plain').send('Gagal membuat pairing otomatis OpenCode');
+    }
   });
 
   // Dashboard API routes

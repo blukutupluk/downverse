@@ -1,659 +1,1302 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>API Key Manager Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    * { font-family: 'Inter', sans-serif; }
-    .status-badge { padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 500; border-radius: 9999px; display: inline-block; }
-    .status-active { background-color: #dcfce7; color: #166534; }
-    .status-cooldown { background-color: #fef9c3; color: #854d0e; }
-    .status-disabled { background-color: #fee2e2; color: #991b1b; }
-    .fade-in { animation: fadeIn 0.3s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Key Manager — Local Proxy</title>
+<style>
+  :root {
+    --bg: #0a0a0e;
+    --bg-soft: #101018;
+    --card: #131320;
+    --card-hi: #181826;
+    --line: rgba(255, 255, 255, 0.07);
+    --line-hi: rgba(255, 255, 255, 0.14);
+    --txt: #ececf1;
+    --muted: #8e8ea0;
+    --accent: #ff6b35;
+    --accent-soft: rgba(255, 107, 53, 0.12);
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --radius: 16px;
+    --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.9);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 420px at 12% -10%, rgba(255, 107, 53, 0.16), transparent 62%),
+      radial-gradient(700px 380px at 100% 0%, rgba(120, 90, 255, 0.12), transparent 60%),
+      var(--bg);
+    color: var(--txt);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .hidden { display: none; }
+  .contents { display: contents; }
+
+  /* ---------- Layout ---------- */
+  .wrap {
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 16px;
+  }
+
+  /* ---------- Header ---------- */
+  header.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(10, 10, 14, 0.78);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    border-bottom: 1px solid var(--line);
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .topbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 62px;
+    padding: 10px 0;
+  }
+
+  .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(145deg, var(--accent), #ff8f4d 55%, #ffb47a);
+    box-shadow: 0 8px 22px -10px rgba(255, 107, 53, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+  .brand-mark svg { width: 20px; height: 20px; color: #1a0d05; }
+
+  .brand-text { min-width: 0; }
+  .brand-text h1 {
+    margin: 0;
+    font-size: 1.02rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+  .brand-text p {
+    margin: 1px 0 0;
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border: 1px solid var(--line-hi);
+    background: var(--card);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .pill .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+  }
+  .pill.is-live { color: var(--ok); border-color: rgba(52, 211, 153, 0.28); background: rgba(52, 211, 153, 0.08); }
+  .pill.is-live .dot { background: var(--ok); box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.14); animation: pulse 2.4s ease-in-out infinite; }
+  .pill.is-down { color: var(--bad); border-color: rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.08); }
+  .pill.is-down .dot { background: var(--bad); }
+  .port-chip { font-family: var(--mono); font-size: 0.7rem; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  /* ---------- Stats ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 20px 0 18px;
+  }
+  .stat {
+    background: linear-gradient(180deg, var(--card-hi), var(--card));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 13px 14px;
+    box-shadow: var(--shadow);
+  }
+  .stat-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .stat-label i {
+    width: 6px; height: 6px; border-radius: 2px; background: var(--c, var(--accent));
+    display: inline-block;
+  }
+  .stat-value {
+    margin-top: 6px;
+    font-size: 1.55rem;
+    font-weight: 680;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-value small { font-size: 0.8rem; font-weight: 500; color: var(--muted); margin-left: 4px; }
+  .stat--wide { grid-column: 1 / -1; }
+
+  /* ---------- Tabs ---------- */
+  .segmented {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    margin-bottom: 16px;
+    position: sticky;
+    top: calc(62px + env(safe-area-inset-top));
+    z-index: 20;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .seg-btn {
+    flex: 1;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 600;
+    padding: 9px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .seg-btn:active { transform: scale(0.98); }
+  .seg-btn.is-active {
+    background: var(--accent-soft);
+    color: #ffb08a;
+    box-shadow: inset 0 0 0 1px rgba(255, 107, 53, 0.28);
+  }
+  .seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- Panels ---------- */
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px;
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .panel-head h2 { margin: 0; font-size: 0.98rem; font-weight: 650; letter-spacing: -0.01em; }
+  .panel-head .sub { margin: 2px 0 0; font-size: 0.78rem; color: var(--muted); }
+  .panel-head .spacer { flex: 1; }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    appearance: none;
+    border: 1px solid var(--line-hi);
+    background: var(--card-hi);
+    color: var(--txt);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 9px 14px;
+    border-radius: 11px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    transition: transform 0.15s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:hover { background: #1f1f30; border-color: rgba(255, 255, 255, 0.22); }
+  .btn:active { transform: scale(0.975); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn svg { width: 15px; height: 15px; }
+
+  .btn-primary {
+    background: linear-gradient(180deg, #ff7d4a, var(--accent));
+    border-color: rgba(255, 255, 255, 0.22);
+    color: #201007;
+    box-shadow: 0 10px 24px -12px rgba(255, 107, 53, 0.95);
+  }
+  .btn-primary:hover { background: linear-gradient(180deg, #ff8d5f, #ff7a45); border-color: rgba(255, 255, 255, 0.35); }
+
+  .btn-sm { padding: 6px 10px; font-size: 0.75rem; border-radius: 9px; }
+  .btn-danger { color: #ffb4b4; border-color: rgba(248, 113, 113, 0.28); background: rgba(248, 113, 113, 0.09); }
+  .btn-danger:hover { background: rgba(248, 113, 113, 0.17); border-color: rgba(248, 113, 113, 0.45); }
+  .btn-ghost { background: transparent; border-color: var(--line); color: var(--muted); }
+  .btn-ghost:hover { color: var(--txt); border-color: var(--line-hi); background: rgba(255, 255, 255, 0.04); }
+
+  /* ---------- Key cards ---------- */
+  .keys-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .key-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent), var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+  }
+  .key-card:hover { border-color: var(--line-hi); }
+
+  .key-top { display: flex; align-items: center; gap: 10px; }
+
+  .prov-avatar {
+    width: 34px; height: 34px; flex: 0 0 34px;
+    border-radius: 10px;
+    display: grid; place-items: center;
+    font-size: 0.8rem; font-weight: 700;
+    color: var(--pc, #ccc);
+    background: color-mix(in srgb, var(--pc, #888) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--pc, #888) 32%, transparent);
+    text-transform: uppercase;
+  }
+
+  .key-id { min-width: 0; flex: 1; }
+  .key-id h3 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 620;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .key-id .prov-name {
+    margin: 1px 0 0;
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.01em;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    border: 1px solid transparent;
+  }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .status-badge.status-active { color: var(--ok); background: rgba(52, 211, 153, 0.1); border-color: rgba(52, 211, 153, 0.25); }
+  .status-badge.status-cooldown { color: var(--warn); background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.25); }
+  .status-badge.status-disabled { color: var(--bad); background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.25); }
+
+  .key-preview {
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    color: #b9b9c8;
+    background: #0b0b12;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 7px 10px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+  .key-preview::-webkit-scrollbar { display: none; }
+
+  .key-meta {
+    display: flex;
+    gap: 18px;
+    margin: 0;
+    flex-wrap: wrap;
+  }
+  .key-meta div { min-width: 0; }
+  .key-meta dt {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .key-meta dd {
+    margin: 2px 0 0;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .ok-txt { color: var(--ok); }
+  .bad-txt { color: var(--bad); }
+
+  .key-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+
+  /* ---------- Empty state ---------- */
+  .empty {
+    text-align: center;
+    padding: 38px 18px;
+    border: 1px dashed var(--line-hi);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.012);
+  }
+  .empty-icon {
+    width: 46px; height: 46px;
+    margin: 0 auto 12px;
+    border-radius: 14px;
+    display: grid; place-items: center;
+    color: #ffb08a;
+    background: var(--accent-soft);
+    border: 1px solid rgba(255, 107, 53, 0.25);
+  }
+  .empty-icon svg { width: 22px; height: 22px; }
+  .empty h3 { margin: 0 0 4px; font-size: 0.92rem; font-weight: 620; }
+  .empty p { margin: 0; font-size: 0.8rem; color: var(--muted); }
+
+  /* ---------- Logs ---------- */
+  .terminal {
+    background: #07070b;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    line-height: 1.65;
+    padding: 12px 14px;
+    max-height: 58vh;
+    overflow: auto;
+    color: #9fe7c0;
+    scrollbar-width: thin;
+  }
+  .terminal .line { white-space: pre-wrap; word-break: break-word; padding: 1px 0; }
+  .terminal .line .ts { color: #5d5d70; }
+  .terminal .line.is-err { color: #ff9d9d; }
+  .terminal .hint { color: #565669; }
+  .terminal::-webkit-scrollbar { width: 8px; }
+  .terminal::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 8px; }
+
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ---------- Settings ---------- */
+  .settings-section + .settings-section {
+    margin-top: 22px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+  }
+  .settings-section h3 {
+    margin: 0 0 3px;
+    font-size: 0.88rem;
+    font-weight: 640;
+  }
+  .settings-section p.hint {
+    margin: 0 0 12px;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  code.inline {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line);
+    padding: 2px 6px;
+    border-radius: 6px;
+    color: #ffc3a3;
+    word-break: break-all;
+  }
+  pre.code-block {
+    margin: 0;
+    background: #07070b;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-family: var(--mono);
+    font-size: 0.73rem;
+    line-height: 1.6;
+    overflow: auto;
+    max-height: 240px;
+    color: #b6e3c9;
+  }
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .field label {
+    display: block;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #c6c6d4;
+    margin-bottom: 5px;
+  }
+  .field .note { margin: 5px 0 0; font-size: 0.7rem; color: var(--muted); }
+
+  input[type="text"], input[type="password"], input[type="number"], select {
+    width: 100%;
+    font: inherit;
+    font-size: 0.84rem;
+    color: var(--txt);
+    background: #0b0b12;
+    border: 1px solid var(--line-hi);
+    border-radius: 11px;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+    color-scheme: dark;
+  }
+  input::placeholder { color: #5d5d70; }
+  input:focus, select:focus {
+    border-color: rgba(255, 107, 53, 0.65);
+    box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.14);
+    background: #0d0d16;
+  }
+  input:disabled { opacity: 0.55; cursor: not-allowed; }
+  select {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, #8e8ea0 50%), linear-gradient(135deg, #8e8ea0 50%, transparent 50%);
+    background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 34px;
+  }
+
+  /* ---------- Modal ---------- */
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(4, 4, 8, 0.66);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+  .modal.flex { display: flex; }
+  .modal-card {
+    width: 100%;
+    max-width: 460px;
+    background: linear-gradient(180deg, #171724, #121220);
+    border: 1px solid var(--line-hi);
+    border-radius: 20px;
+    box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.95);
+    overflow: hidden;
+    animation: sheet-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes sheet-in {
+    from { opacity: 0; transform: translateY(18px) scale(0.99); }
+    to { opacity: 1; transform: none; }
+  }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px 12px;
+  }
+  .modal-head h3 { margin: 0; font-size: 1rem; font-weight: 640; }
+  .modal-head .spacer { flex: 1; }
+  .icon-btn {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    display: grid; place-items: center;
+    cursor: pointer;
+    transition: color 0.16s ease, background 0.16s ease;
+  }
+  .icon-btn:hover { color: var(--txt); background: rgba(255, 255, 255, 0.08); }
+  .icon-btn svg { width: 16px; height: 16px; }
+
+  #key-form { padding: 4px 18px 18px; display: flex; flex-direction: column; gap: 13px; }
+  .modal-actions { display: flex; gap: 8px; padding-top: 6px; }
+  .modal-actions .btn { flex: 1; padding: 11px 14px; }
+
+  .input-affix { position: relative; }
+  .input-affix input { padding-right: 40px; }
+  .input-affix .icon-btn {
+    position: absolute;
+    right: 4px; top: 50%;
+    transform: translateY(-50%);
+    border: 0; background: transparent;
+    width: 32px; height: 32px;
+  }
+
+  /* ---------- Toasts ---------- */
+  #toasts {
+    position: fixed;
+    left: 50%;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(92vw, 420px);
+    pointer-events: none;
+  }
+  .toast {
+    pointer-events: auto;
+    background: #1b1b2b;
+    border: 1px solid var(--line-hi);
+    border-left: 3px solid var(--accent);
+    border-radius: 12px;
+    padding: 10px 13px;
+    font-size: 0.8rem;
+    color: var(--txt);
+    box-shadow: 0 16px 32px -16px rgba(0, 0, 0, 0.95);
+    animation: toast-in 0.22s ease-out;
+  }
+  .toast.is-ok { border-left-color: var(--ok); }
+  .toast.is-err { border-left-color: var(--bad); }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (min-width: 620px) {
+    .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .stat--wide { grid-column: auto; }
+    .field-grid { grid-template-columns: 1fr 1fr; }
+    .keys-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .modal { align-items: center; }
+    .modal-card { animation: sheet-in 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+  }
+  @media (min-width: 900px) {
+    .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .keys-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+</style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-  <!-- Header -->
-  <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
-        <div class="flex items-center space-x-3">
-          <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-            </svg>
-          </div>
-          <h1 class="text-xl font-bold text-gray-900">API Key Manager</h1>
-        </div>
-        <div class="flex items-center space-x-4">
-          <span id="server-status" class="status-badge status-active">Server Running</span>
-          <span id="port-display" class="text-sm text-gray-500 px-3 py-1 bg-gray-100 rounded">Port: 3000</span>
-        </div>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="10" width="16" height="10" rx="2.5"></rect>
+          <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+          <circle cx="12" cy="15" r="1.2" fill="currentColor" stroke="none"></circle>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>Key Manager</h1>
+        <p>Local proxy · auto-failover</p>
       </div>
     </div>
-  </header>
 
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6" id="stats-cards">
-      <!-- Stats will be inserted here -->
+    <div class="topbar-right">
+      <span id="server-status" class="pill" role="status" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="pill-text">Menghubungkan…</span>
+      </span>
+      <span id="port-display" class="pill port-chip" title="Port server">:3000</span>
     </div>
+  </div>
+</header>
 
-    <!-- Tabs -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-      <div class="border-b border-gray-200">
-        <nav class="flex space-x-8 px-6" aria-label="Tabs">
-          <button class="tab-btn py-4 px-1 border-b-2 font-medium text-sm text-blue-600 border-blue-600" data-tab="keys">API Keys</button>
-          <button class="tab-btn py-4 px-1 border-b-2 font-medium text-sm text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300" data-tab="logs">Request Logs</button>
-          <button class="tab-btn py-4 px-1 border-b-2 font-medium text-sm text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300" data-tab="settings">Settings</button>
-        </nav>
-      </div>
+<main class="wrap">
 
-      <!-- Keys Tab -->
-      <div id="tab-keys" class="tab-content p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
-          <h2 class="text-lg font-semibold text-gray-900">Manage API Keys</h2>
-          <button id="add-key-btn" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors">
-            <svg class="inline w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-            </svg>
-            Add Key
-          </button>
+  <section class="stats" id="stats-cards" aria-label="Ringkasan">
+    <!-- Diisi oleh renderStats() -->
+  </section>
+
+  <nav class="segmented" aria-label="Navigasi tab">
+    <button class="seg-btn is-active" data-tab="keys" type="button">API Keys</button>
+    <button class="seg-btn" data-tab="logs" type="button">Log</button>
+    <button class="seg-btn" data-tab="settings" type="button">Pengaturan</button>
+  </nav>
+
+  <!-- ================= KEYS ================= -->
+  <section id="tab-keys" class="tab-content">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Key tersimpan</h2>
+          <p class="sub">Rotasi otomatis saat kena rate limit (429)</p>
         </div>
-
-        <!-- Add/Edit Key Modal -->
-        <div id="key-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-          <div class="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 id="modal-title" class="text-lg font-semibold text-gray-900">Add API Key</h3>
-              <button id="close-modal" class="text-gray-400 hover:text-gray-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-              </button>
-            </div>
-            <form id="key-form" class="p-6 space-y-4">
-              <input type="hidden" id="key-id">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Provider</label>
-                <select id="key-provider" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
-                  <option value="">Select provider</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="groq">Groq</option>
-                  <option value="deepseek">DeepSeek</option>
-                  <option value="gemini">Google Gemini</option>
-                  <option value="together">Together AI</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input type="text" id="key-name" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., Main Groq Key" required>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-                <div class="relative">
-                  <input type="password" id="key-value" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10" placeholder="Enter API key" required>
-                  <button type="button" id="toggle-key-visibility" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="eye-open">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                    </svg>
-                    <svg class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="eye-closed">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L3 3"></path>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <div class="flex space-x-3 pt-4">
-                <button type="button" id="cancel-modal" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">Cancel</button>
-                <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">Save</button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        <!-- Keys Table -->
-        <div class="overflow-x-auto">
-          <table class="w-full" id="keys-table">
-            <thead class="bg-gray-50">
-              <tr>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key Preview</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Used</th>
-                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200" id="keys-tbody">
-              <!-- Rows inserted here -->
-            </tbody>
-          </table>
-        </div>
-
-        <div id="empty-state" class="hidden text-center py-12">
-          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+        <div class="spacer"></div>
+        <button id="add-key-btn" class="btn btn-primary" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"></path>
           </svg>
-          <h3 class="mt-2 text-sm font-medium text-gray-900">No API keys configured</h3>
-          <p class="mt-1 text-sm text-gray-500">Click "Add Key" to get started</p>
-        </div>
+          Tambah Key
+        </button>
       </div>
 
-      <!-- Logs Tab -->
-      <div id="tab-logs" class="tab-content p-6 hidden">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
-          <h2 class="text-lg font-semibold text-gray-900">Request Logs</h2>
-          <button id="clear-logs-btn" class="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium text-sm">
-            Clear Logs
-          </button>
-        </div>
-        <div class="bg-gray-900 rounded-lg p-4 font-mono text-xs text-green-300 max-h-96 overflow-auto" id="logs-container">
-          <div class="text-gray-500">No logs yet. Make a request through OpenCode to see logs here.</div>
-        </div>
+      <div id="keys-table" class="keys-grid" role="list">
+        <div id="keys-tbody" class="contents" role="presentation"></div>
       </div>
 
-      <!-- Settings Tab -->
-      <div id="tab-settings" class="tab-content p-6 hidden">
-        <h2 class="text-lg font-semibold text-gray-900 mb-6">Settings</h2>
-        <div class="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
-          <div>
-            <h3 class="text-md font-medium text-gray-900 mb-4">OpenCode Integration</h3>
-            <p class="text-sm text-gray-600 mb-4">Add this configuration to your <code class="bg-gray-100 px-2 py-1 rounded text-blue-600">~/.config/opencode/opencode.json</code> to use the local proxy:</p>
-            <pre id="opencode-config" class="bg-gray-900 text-green-300 p-4 rounded-lg text-sm overflow-auto max-h-48"></pre>
-            <button id="copy-config-btn" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 text-sm">
-              Copy Configuration
-            </button>
-          </div>
-          
-          <div class="border-t border-gray-200 pt-6">
-            <h3 class="text-md font-medium text-gray-900 mb-4">Server Configuration</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Server Port</label>
-                <input type="number" id="server-port" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="3000" disabled>
-                <p class="mt-1 text-xs text-gray-500">Restart server to change port</p>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Default Cooldown (seconds)</label>
-                <input type="number" id="default-cooldown" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="60">
-              </div>
-            </div>
-          </div>
-
-          <div class="border-t border-gray-200 pt-6">
-            <h3 class="text-md font-medium text-gray-900 mb-4">Data Management</h3>
-            <div class="flex flex-col sm:flex-row gap-3">
-              <button id="export-data-btn" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-                Export Keys (JSON)
-              </button>
-              <button id="import-data-btn" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-                Import Keys (JSON)
-              </button>
-              <input type="file" id="import-file" accept=".json" class="hidden">
-            </div>
-          </div>
+      <div id="empty-state" class="empty hidden">
+        <div class="empty-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="10" width="16" height="10" rx="2.5"></rect>
+            <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+          </svg>
         </div>
+        <h3>Belum ada API key</h3>
+        <p>Tap <strong>Tambah Key</strong> untuk mulai. Key pertama langsung aktif.</p>
       </div>
     </div>
-  </main>
+  </section>
 
-  <script>
-    // Global state
-    let keys = [];
-    let logs = [];
-    let editingKeyId = null;
+  <!-- ================= LOGS ================= -->
+  <section id="tab-logs" class="tab-content hidden">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Log request</h2>
+          <p class="sub">Aktivitas proxy &amp; perubahan key (100 entri terakhir)</p>
+        </div>
+        <div class="spacer"></div>
+        <div class="toolbar">
+          <button id="clear-logs-btn" class="btn btn-ghost btn-sm" type="button">Bersihkan</button>
+        </div>
+      </div>
 
-    // API Base URL
-    const API_BASE = '/api';
+      <div class="terminal" id="logs-container" role="log" aria-live="polite">
+        <div class="hint">Belum ada log. Kirim request lewat OpenCode untuk melihat aktivitas di sini.</div>
+      </div>
+    </div>
+  </section>
 
-    // Initialize
-    document.addEventListener('DOMContentLoaded', async () => {
-      await loadStats();
-      await loadKeys();
-      setupEventListeners();
-      updateOpenCodeConfig();
-      startPeriodicRefresh();
+  <!-- ================= SETTINGS ================= -->
+  <section id="tab-settings" class="tab-content hidden">
+    <div class="panel">
+
+      <div class="settings-section">
+        <h3>Integrasi OpenCode</h3>
+        <p class="hint">Tambahkan blok ini ke <code class="inline">~/.config/opencode/opencode.json</code> supaya OpenCode memakai proxy lokal.</p>
+        <pre class="code-block" id="opencode-config"></pre>
+        <div style="margin-top:10px">
+          <button id="copy-config-btn" class="btn" type="button">Copy Configuration</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Server</h3>
+        <p class="hint">Perubahan port butuh restart server.</p>
+        <div class="field-grid">
+          <div class="field">
+            <label for="server-port">Port</label>
+            <input type="number" id="server-port" value="3000" disabled>
+            <p class="note">Restart server untuk mengganti port</p>
+          </div>
+          <div class="field">
+            <label for="default-cooldown">Cooldown default (detik)</label>
+            <input type="number" id="default-cooldown" value="60" min="1">
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Data</h3>
+        <p class="hint">Backup / restore daftar key dalam format JSON.</p>
+        <div class="toolbar">
+          <button id="export-data-btn" class="btn btn-ghost" type="button">Export (JSON)</button>
+          <button id="import-data-btn" class="btn btn-ghost" type="button">Import (JSON)</button>
+          <input type="file" id="import-file" accept=".json" class="hidden">
+        </div>
+      </div>
+
+    </div>
+  </section>
+</main>
+
+<!-- ================= MODAL ================= -->
+<div id="key-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="modal-title">Tambah API Key</h3>
+      <div class="spacer"></div>
+      <button id="close-modal" class="icon-btn" type="button" aria-label="Tutup">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6L6 18"></path>
+        </svg>
+      </button>
+    </div>
+
+    <form id="key-form">
+      <input type="hidden" id="key-id">
+
+      <div class="field">
+        <label for="key-provider">Provider</label>
+        <select id="key-provider" required>
+          <option value="">Pilih provider…</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="groq">Groq</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="together">Together AI</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="key-name">Nama</label>
+        <input type="text" id="key-name" placeholder="mis. Groq utama" required autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label for="key-value">API Key</label>
+        <div class="input-affix">
+          <input type="password" id="key-value" placeholder="Tempel API key" required autocomplete="off" spellcheck="false">
+          <button type="button" id="toggle-key-visibility" class="icon-btn" aria-label="Tampilkan / sembunyikan key">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="eye-open">
+              <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="eye-closed">
+              <path d="M3 3l18 18"></path>
+              <path d="M10.6 6.1A9.9 9.9 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-3.2 4"></path>
+              <path d="M6.3 6.8A16.6 16.6 0 0 0 2.5 12S6 18 12 18a9.7 9.7 0 0 0 4.2-.9"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="cancel-modal" class="btn btn-ghost">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<script>
+  /* ================= STATE ================= */
+  let keys = [];
+  let logs = [];
+  let editingKeyId = null;
+
+  const API_BASE = '/api';
+  const PROVIDERS = {
+    openrouter: { label: 'openrouter', color: '#a78bfa' },
+    groq:       { label: 'groq',       color: '#fb923c' },
+    deepseek:   { label: 'deepseek',   color: '#60a5fa' },
+    gemini:     { label: 'gemini',     color: '#818cf8' },
+    together:   { label: 'together',   color: '#f472b6' }
+  };
+
+  /* ================= INIT ================= */
+  document.addEventListener('DOMContentLoaded', async () => {
+    setupEventListeners();
+    updateOpenCodeConfig();
+    renderStats(emptyStats());
+    await refreshAll();
+    checkServer();
+    startPeriodicRefresh();
+  });
+
+  function emptyStats() {
+    return { totalKeys: 0, activeKeys: 0, cooldownKeys: 0, disabledKeys: 0, totalSuccessCount: 0, totalErrorCount: 0 };
+  }
+
+  /* ================= EVENTS ================= */
+  function setupEventListeners() {
+    document.querySelectorAll('.seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
 
-    // Event Listeners
-    function setupEventListeners() {
-      // Tab switching
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-      });
+    document.getElementById('add-key-btn').addEventListener('click', () => openModal());
 
-      // Add key button
-      document.getElementById('add-key-btn').addEventListener('click', () => openModal());
+    document.getElementById('close-modal').addEventListener('click', closeModal);
+    document.getElementById('cancel-modal').addEventListener('click', closeModal);
+    document.getElementById('key-form').addEventListener('submit', handleKeySubmit);
+    document.getElementById('toggle-key-visibility').addEventListener('click', toggleKeyVisibility);
 
-      // Modal controls
-      document.getElementById('close-modal').addEventListener('click', closeModal);
-      document.getElementById('cancel-modal').addEventListener('click', closeModal);
-      document.getElementById('key-form').addEventListener('submit', handleKeySubmit);
-      document.getElementById('toggle-key-visibility').addEventListener('click', toggleKeyVisibility);
+    document.getElementById('key-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeModal();
+    });
 
-      // Key visibility toggle
-      document.getElementById('key-modal').addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) closeModal();
-      });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('key-modal').classList.contains('flex')) closeModal();
+    });
 
-      // Settings
-      document.getElementById('copy-config-btn').addEventListener('click', copyConfig);
-      document.getElementById('export-data-btn').addEventListener('click', exportData);
-      document.getElementById('import-data-btn').addEventListener('click', () => document.getElementById('import-file').click());
-      document.getElementById('import-file').addEventListener('change', importData);
-      document.getElementById('clear-logs-btn').addEventListener('click', clearLogs);
-    }
+    document.getElementById('copy-config-btn').addEventListener('click', copyConfig);
+    document.getElementById('export-data-btn').addEventListener('click', exportData);
+    document.getElementById('import-data-btn').addEventListener('click', () => document.getElementById('import-file').click());
+    document.getElementById('import-file').addEventListener('change', importData);
+    document.getElementById('clear-logs-btn').addEventListener('click', clearLogs);
+  }
 
-    // Tab switching
-    function switchTab(tabName) {
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        const isActive = btn.dataset.tab === tabName;
-        btn.classList.toggle('text-blue-600', isActive);
-        btn.classList.toggle('border-blue-600', isActive);
-        btn.classList.toggle('text-gray-500', !isActive);
-        btn.classList.toggle('border-transparent', !isActive);
-      });
-      document.querySelectorAll('.tab-content').forEach(content => {
-        content.classList.toggle('hidden', content.id !== `tab-${tabName}`);
-      });
-    }
+  function switchTab(tabName) {
+    document.querySelectorAll('.seg-btn').forEach(btn => {
+      const isActive = btn.dataset.tab === tabName;
+      btn.classList.toggle('is-active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    document.querySelectorAll('.tab-content').forEach(content => {
+      content.classList.toggle('hidden', content.id !== `tab-${tabName}`);
+    });
+  }
 
-    // Modal handling
-    function openModal(key = null) {
-      editingKeyId = key?.id || null;
-      const keyInput = document.getElementById('key-value');
-      document.getElementById('modal-title').textContent = key ? 'Edit API Key' : 'Add API Key';
-      document.getElementById('key-id').value = key?.id || '';
-      document.getElementById('key-provider').value = key?.provider || '';
-      document.getElementById('key-provider').disabled = !!key; // Can't change provider when editing
-      document.getElementById('key-name').value = key?.name || '';
+  /* ================= MODAL ================= */
+  function openModal(key = null) {
+    editingKeyId = key?.id || null;
+    const keyInput = document.getElementById('key-value');
 
-      if (key) {
-        // Editing: key value is masked server-side and cannot be changed via PUT
-        keyInput.value = '';
-        keyInput.required = false;
-        keyInput.placeholder = 'Kosongkan untuk tidak mengubah key';
-      } else {
-        keyInput.value = '';
-        keyInput.required = true;
-        keyInput.placeholder = 'Enter API key';
-      }
+    document.getElementById('modal-title').textContent = key ? 'Edit API Key' : 'Tambah API Key';
+    document.getElementById('key-id').value = key?.id || '';
+    document.getElementById('key-provider').value = key?.provider || '';
+    document.getElementById('key-provider').disabled = !!key;
+    document.getElementById('key-name').value = key?.name || '';
 
-      document.getElementById('key-modal').classList.remove('hidden');
-      document.getElementById('key-modal').classList.add('flex');
-    }
-
-    function closeModal() {
-      document.getElementById('key-modal').classList.add('hidden');
-      document.getElementById('key-modal').classList.remove('flex');
-      document.getElementById('key-form').reset();
-      editingKeyId = null;
-      document.getElementById('key-provider').disabled = false;
-      const keyInput = document.getElementById('key-value');
+    if (key) {
+      keyInput.value = '';
+      keyInput.required = false;
+      keyInput.placeholder = 'Kosongkan bila tidak diubah';
+    } else {
+      keyInput.value = '';
       keyInput.required = true;
-      keyInput.placeholder = 'Enter API key';
-      keyInput.type = 'password';
-      document.getElementById('eye-open').classList.remove('hidden');
-      document.getElementById('eye-closed').classList.add('hidden');
+      keyInput.placeholder = 'Tempel API key';
     }
 
-    function toggleKeyVisibility() {
-      const input = document.getElementById('key-value');
-      const eyeOpen = document.getElementById('eye-open');
-      const eyeClosed = document.getElementById('eye-closed');
-      if (input.type === 'password') {
-        input.type = 'text';
-        eyeOpen.classList.add('hidden');
-        eyeClosed.classList.remove('hidden');
-      } else {
-        input.type = 'password';
-        eyeOpen.classList.remove('hidden');
-        eyeClosed.classList.add('hidden');
-      }
+    document.getElementById('key-modal').classList.remove('hidden');
+    document.getElementById('key-modal').classList.add('flex');
+    setTimeout(() => document.getElementById('key-name').focus(), 60);
+  }
+
+  function closeModal() {
+    const modal = document.getElementById('key-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    document.getElementById('key-form').reset();
+    editingKeyId = null;
+    document.getElementById('key-provider').disabled = false;
+
+    const keyInput = document.getElementById('key-value');
+    keyInput.required = true;
+    keyInput.placeholder = 'Tempel API key';
+    keyInput.type = 'password';
+    document.getElementById('eye-open').classList.remove('hidden');
+    document.getElementById('eye-closed').classList.add('hidden');
+  }
+
+  function toggleKeyVisibility() {
+    const input = document.getElementById('key-value');
+    const eyeOpen = document.getElementById('eye-open');
+    const eyeClosed = document.getElementById('eye-closed');
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    eyeOpen.classList.toggle('hidden', show);
+    eyeClosed.classList.toggle('hidden', !show);
+  }
+
+  /* ================= API ================= */
+  async function apiFetch(endpoint, options = {}) {
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      ...options
+    });
+    if (!res.ok && res.status !== 204) {
+      const err = await res.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
     }
+    return res.status === 204 ? null : res.json();
+  }
 
-    // API Calls
-    async function apiFetch(endpoint, options = {}) {
-      const res = await fetch(`${API_BASE}${endpoint}`, {
-        headers: { 'Content-Type': 'application/json', ...options.headers },
-        ...options
-      });
-      if (!res.ok && res.status !== 204) {
-        const err = await res.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-      return res.status === 204 ? null : res.json();
+  async function refreshAll() {
+    await Promise.allSettled([loadKeys(), loadStats()]);
+  }
+
+  async function loadKeys() {
+    try {
+      keys = await apiFetch('/keys');
+      renderKeys();
+    } catch (err) {
+      console.error('Failed to load keys:', err);
+      addLog(`ERROR: gagal memuat key — ${err.message}`);
     }
+  }
 
-    async function loadKeys() {
-      try {
-        keys = await apiFetch('/keys');
-        renderKeys();
-      } catch (err) {
-        console.error('Failed to load keys:', err);
-        addLog(`ERROR: Failed to load keys - ${err.message}`);
-      }
+  async function loadStats() {
+    try {
+      renderStats(await apiFetch('/stats'));
+    } catch (err) {
+      console.error('Failed to load stats:', err);
     }
+  }
 
-    async function loadStats() {
-      try {
-        const stats = await apiFetch('/stats');
-        renderStats(stats);
-      } catch (err) {
-        console.error('Failed to load stats:', err);
-      }
+  async function checkServer() {
+    const pill = document.getElementById('server-status');
+    const text = pill.querySelector('.pill-text');
+    try {
+      const res = await fetch('/health', { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      pill.classList.add('is-live');
+      pill.classList.remove('is-down');
+      text.textContent = 'Server aktif';
+    } catch {
+      pill.classList.remove('is-live');
+      pill.classList.add('is-down');
+      text.textContent = 'Server offline';
     }
+  }
 
-    async function handleKeySubmit(e) {
-      e.preventDefault();
-      const id = document.getElementById('key-id').value;
-      const provider = document.getElementById('key-provider').value;
-      const name = document.getElementById('key-name').value;
-      const keyValue = document.getElementById('key-value').value;
+  /* ================= ACTIONS ================= */
+  async function handleKeySubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById('key-id').value;
+    const provider = document.getElementById('key-provider').value;
+    const name = document.getElementById('key-name').value.trim();
+    const keyValue = document.getElementById('key-value').value.trim();
 
-      if (!provider) {
-        alert('Provider wajib dipilih');
-        return;
-      }
-      if (!id && !keyValue) {
-        alert('API Key wajib diisi');
-        return;
-      }
+    if (!provider) return toast('Provider wajib dipilih', 'err');
+    if (!name) return toast('Nama key wajib diisi', 'err');
+    if (!id && !keyValue) return toast('API key wajib diisi', 'err');
 
-      try {
-        if (id) {
-          await apiFetch(`/keys/${id}`, {
-            method: 'PUT',
-            body: JSON.stringify({ name, status: 'active' })
-          });
-          addLog(`Updated key: ${name}`);
-        } else {
-          await apiFetch('/keys', {
-            method: 'POST',
-            body: JSON.stringify({ provider, name, key: keyValue })
-          });
-          addLog(`Added new key: ${name} (${provider})`);
-        }
-        closeModal();
-        await loadKeys();
-        await loadStats();
-      } catch (err) {
-        alert(`Error: ${err.message}`);
-      }
-    }
-
-    async function deleteKey(id, name) {
-      if (!confirm(`Delete key "${name}"?`)) return;
-      try {
-        await apiFetch(`/keys/${id}`, { method: 'DELETE' });
-        addLog(`Deleted key: ${name}`);
-        await loadKeys();
-        await loadStats();
-      } catch (err) {
-        alert(`Error: ${err.message}`);
-      }
-    }
-
-    async function toggleKeyStatus(id, currentStatus) {
-      const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
-      try {
+    try {
+      if (id) {
         await apiFetch(`/keys/${id}`, {
           method: 'PUT',
-          body: JSON.stringify({ status: newStatus })
+          body: JSON.stringify({ name, status: 'active' })
         });
-        addLog(`Key status changed to ${newStatus}`);
-        await loadKeys();
-        await loadStats();
-      } catch (err) {
-        alert(`Error: ${err.message}`);
+        addLog(`Key diperbarui: ${name}`);
+        toast('Perubahan disimpan', 'ok');
+      } else {
+        await apiFetch('/keys', {
+          method: 'POST',
+          body: JSON.stringify({ provider, name, key: keyValue })
+        });
+        addLog(`Key ditambahkan: ${name} (${provider})`);
+        toast('Key ditambahkan', 'ok');
       }
+      closeModal();
+      await refreshAll();
+    } catch (err) {
+      toast(`Gagal: ${err.message}`, 'err');
     }
+  }
 
-    // Rendering
-    function renderKeys() {
-      const tbody = document.getElementById('keys-tbody');
-      const emptyState = document.getElementById('empty-state');
+  async function deleteKey(id, name) {
+    if (!confirm(`Hapus key "${name}"?`)) return;
+    try {
+      await apiFetch(`/keys/${id}`, { method: 'DELETE' });
+      addLog(`Key dihapus: ${name}`);
+      toast('Key dihapus', 'ok');
+      await refreshAll();
+    } catch (err) {
+      toast(`Gagal: ${err.message}`, 'err');
+    }
+  }
 
-      if (keys.length === 0) {
-        tbody.innerHTML = '';
-        emptyState.classList.remove('hidden');
-        return;
-      }
-
-      emptyState.classList.add('hidden');
-      tbody.innerHTML = keys.map(key => `
-        <tr class="fade-in hover:bg-gray-50">
-          <td class="px-4 py-3">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${getProviderColor(key.provider)}-100 text-${getProviderColor(key.provider)}-800">
-              ${getProviderIcon(key.provider)} ${key.provider}
-            </span>
-          </td>
-          <td class="px-4 py-3 text-sm font-medium text-gray-900">${key.name}</td>
-          <td class="px-4 py-3 text-sm font-mono text-gray-500">${key.key}</td>
-          <td class="px-4 py-3">
-            <span class="status-badge status-${key.status}" id="status-${key.id}">
-              ${getStatusLabel(key.status)}${key.status === 'cooldown' && key.cooldownUntil ? ` (${formatCooldown(key.cooldownUntil)})` : ''}
-            </span>
-          </td>
-          <td class="px-4 py-3 text-sm text-gray-600">
-            ✓ ${key.successCount || 0} / ✗ ${key.errorCount || 0}
-          </td>
-          <td class="px-4 py-3 text-sm text-gray-500">${key.lastUsed ? formatDate(key.lastUsed) : 'Never'}</td>
-          <td class="px-4 py-3 text-right">
-            <div class="flex items-center justify-end space-x-2">
-              <button data-action="toggle" data-id="${key.id}" data-status="${key.status}" class="text-xs px-2 py-1 ${key.status === 'active' ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'} rounded transition-colors">
-                ${key.status === 'active' ? 'Disable' : 'Enable'}
-              </button>
-              <button data-action="edit" data-id="${key.id}" class="text-xs px-2 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded transition-colors">
-                Edit
-              </button>
-              <button data-action="delete" data-id="${key.id}" data-name="${escapeAttr(key.name)}" class="text-xs px-2 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded transition-colors">
-                Delete
-              </button>
-            </div>
-          </td>
-        </tr>
-      `).join('');
-
-      // Event delegation for row action buttons
-      tbody.querySelectorAll('button[data-action]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = btn.dataset.id;
-          const action = btn.dataset.action;
-          if (action === 'toggle') {
-            toggleKeyStatus(id, btn.dataset.status);
-          } else if (action === 'edit') {
-            const key = keys.find(k => k.id === id);
-            if (key) openModal(key);
-          } else if (action === 'delete') {
-            deleteKey(id, btn.dataset.name);
-          }
-        });
+  async function toggleKeyStatus(id, currentStatus) {
+    const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
+    try {
+      await apiFetch(`/keys/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus })
       });
+      addLog(`Status key diubah → ${newStatus}`);
+      await refreshAll();
+    } catch (err) {
+      toast(`Gagal: ${err.message}`, 'err');
+    }
+  }
+
+  /* ================= RENDER ================= */
+  function renderKeys() {
+    const grid = document.getElementById('keys-tbody');
+    const emptyState = document.getElementById('empty-state');
+
+    if (!keys.length) {
+      grid.innerHTML = '';
+      emptyState.classList.remove('hidden');
+      return;
     }
 
-    function renderStats(stats) {
-      const container = document.getElementById('stats-cards');
-      const cards = [
-        { label: 'Total Keys', value: stats.totalKeys, color: 'blue', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
-        { label: 'Active', value: stats.activeKeys, color: 'green', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
-        { label: 'Cooldown', value: stats.cooldownKeys, color: 'yellow', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-        { label: 'Disabled', value: stats.disabledKeys, color: 'red', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z' },
-        { label: 'Total Requests', value: stats.totalSuccessCount + stats.totalErrorCount, color: 'purple', icon: 'M13 10V3L4 14h7v7l9-11h-7z' }
-      ];
+    emptyState.classList.add('hidden');
 
-      container.innerHTML = cards.map(card => `
-        <div class="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
-          <div class="flex items-center">
-            <div class="w-10 h-10 bg-${card.color}-100 rounded-lg flex items-center justify-center">
-              <svg class="w-5 h-5 text-${card.color}-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${card.icon}"></path>
-              </svg>
+    grid.innerHTML = keys.map(key => {
+      const prov = PROVIDERS[key.provider] || { label: key.provider || 'lain', color: '#8e8ea0' };
+      const cooldown = key.status === 'cooldown' && key.cooldownUntil
+        ? ` · ${formatCooldown(key.cooldownUntil)}`
+        : '';
+
+      return `
+        <article class="key-card" role="listitem" style="--pc:${prov.color}">
+          <div class="key-top">
+            <span class="prov-avatar" aria-hidden="true">${escapeHtml((key.provider || '?').slice(0, 2))}</span>
+            <div class="key-id">
+              <h3 title="${escapeAttr(key.name)}">${escapeHtml(key.name)}</h3>
+              <p class="prov-name">${escapeHtml(prov.label)}</p>
             </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-500">${card.label}</p>
-              <p class="text-2xl font-bold text-gray-900">${card.value}</p>
-            </div>
+            <span class="status-badge badge status-${escapeAttr(key.status)}" id="status-${escapeAttr(key.id)}">
+              ${getStatusLabel(key.status)}${cooldown}
+            </span>
           </div>
-        </div>
-      `).join('');
-    }
 
-    function addLog(message) {
-      const timestamp = new Date().toLocaleTimeString();
-      logs.unshift(`[${timestamp}] ${message}`);
-      if (logs.length > 100) logs.pop();
-      renderLogs();
-    }
+          <code class="key-preview">${escapeHtml(key.key || '—')}</code>
 
-    function renderLogs() {
-      const container = document.getElementById('logs-container');
-      if (logs.length === 0) {
-        container.innerHTML = '<div class="text-gray-500">No logs yet. Make a request through OpenCode to see logs here.</div>';
-        return;
+          <dl class="key-meta">
+            <div>
+              <dt>Sukses / Gagal</dt>
+              <dd><span class="ok-txt">${key.successCount || 0}</span> / <span class="bad-txt">${key.errorCount || 0}</span></dd>
+            </div>
+            <div>
+              <dt>Terakhir dipakai</dt>
+              <dd>${key.lastUsed ? formatDate(key.lastUsed) : 'Belum pernah'}</dd>
+            </div>
+          </dl>
+
+          <div class="key-actions">
+            <button type="button" class="btn btn-sm ${key.status === 'active' ? 'btn-danger' : ''}" data-action="toggle" data-id="${escapeAttr(key.id)}" data-status="${escapeAttr(key.status)}">
+              ${key.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
+            </button>
+            <button type="button" class="btn btn-sm btn-ghost" data-action="edit" data-id="${escapeAttr(key.id)}">Edit</button>
+            <button type="button" class="btn btn-sm btn-ghost" data-action="delete" data-id="${escapeAttr(key.id)}" data-name="${escapeAttr(key.name)}">Hapus</button>
+          </div>
+        </article>
+      `;
+    }).join('');
+
+    grid.querySelectorAll('button[data-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const { action, id, status, name } = btn.dataset;
+        if (action === 'toggle') toggleKeyStatus(id, status);
+        else if (action === 'edit') {
+          const key = keys.find(k => k.id === id);
+          if (key) openModal(key);
+        } else if (action === 'delete') deleteKey(id, name);
+      });
+    });
+  }
+
+  function renderStats(stats) {
+    const cards = [
+      { label: 'Total key',     value: stats.totalKeys,                                    color: '#ff6b35' },
+      { label: 'Aktif',         value: stats.activeKeys,                                   color: '#34d399' },
+      { label: 'Cooldown',      value: stats.cooldownKeys,                                 color: '#fbbf24' },
+      { label: 'Nonaktif',      value: stats.disabledKeys,                                 color: '#f87171' },
+      { label: 'Total request', value: (stats.totalSuccessCount || 0) + (stats.totalErrorCount || 0), color: '#a78bfa', wide: true }
+    ];
+
+    document.getElementById('stats-cards').innerHTML = cards.map(card => `
+      <div class="stat${card.wide ? ' stat--wide' : ''}" style="--c:${card.color}">
+        <div class="stat-label"><i aria-hidden="true"></i>${card.label}</div>
+        <div class="stat-value">${card.value ?? 0}</div>
+      </div>
+    `).join('');
+  }
+
+  /* ================= LOGS ================= */
+  function addLog(message) {
+    const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    logs.unshift({ timestamp, message });
+    if (logs.length > 100) logs.pop();
+    renderLogs();
+  }
+
+  function renderLogs() {
+    const container = document.getElementById('logs-container');
+    if (!logs.length) {
+      container.innerHTML = '<div class="hint">Belum ada log. Kirim request lewat OpenCode untuk melihat aktivitas di sini.</div>';
+      return;
+    }
+    container.innerHTML = logs.map(log => {
+      const isErr = /error|gagal|failed/i.test(log.message);
+      return `<div class="line${isErr ? ' is-err' : ''}"><span class="ts">[${escapeHtml(log.timestamp)}]</span> ${escapeHtml(log.message)}</div>`;
+    }).join('');
+  }
+
+  function clearLogs() {
+    logs = [];
+    renderLogs();
+    toast('Log dibersihkan', 'ok');
+  }
+
+  /* ================= CONFIG ================= */
+  function updateOpenCodeConfig() {
+    const config = {
+      provider: {
+        'local-manager': {
+          type: 'openai',
+          options: {
+            baseURL: `http://127.0.0.1:${location.port || 3000}/v1`,
+            apiKey: 'local-manager'
+          },
+          models: ['openrouter/*', 'groq/*', 'deepseek/*', 'gemini/*', 'together/*']
+        }
       }
-      container.innerHTML = logs.map(log => `<div>${escapeHtml(log)}</div>`).join('');
-    }
+    };
+    document.getElementById('opencode-config').textContent = JSON.stringify(config, null, 2);
+  }
 
-    function clearLogs() {
-      logs = [];
-      renderLogs();
+  async function copyConfig() {
+    const text = document.getElementById('opencode-config').textContent;
+    const btn = document.getElementById('copy-config-btn');
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = 'Tersalin ✓';
+      toast('Konfigurasi disalin', 'ok');
+    } catch {
+      toast('Gagal menyalin — salin manual saja', 'err');
     }
+    setTimeout(() => btn.textContent = 'Copy Configuration', 1800);
+  }
 
-    // OpenCode Config
-    function updateOpenCodeConfig() {
-      const config = {
-        "provider": {
-          "local-manager": {
-            "type": "openai",
-            "options": {
-              "baseURL": "http://localhost:3000/v1",
-              "apiKey": "local-manager"
-            },
-            "models": ["openrouter/*", "groq/*", "deepseek/*", "gemini/*", "together/*"]
+  /* ================= EXPORT / IMPORT ================= */
+  function exportData() {
+    const data = {
+      keys: keys.map(k => ({ ...k, key: String(k.key || '').replace(/•/g, '') })),
+      exportedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `api-keys-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('Key diekspor ke JSON');
+    toast('Backup diunduh', 'ok');
+  }
+
+  function importData(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (!data.keys || !Array.isArray(data.keys)) throw new Error('Format tidak dikenali');
+        let imported = 0;
+        for (const key of data.keys) {
+          if (key.key && !String(key.key).startsWith('•')) {
+            await apiFetch('/keys', {
+              method: 'POST',
+              body: JSON.stringify({ provider: key.provider, name: key.name, key: key.key })
+            });
+            imported++;
           }
         }
-      };
-      document.getElementById('opencode-config').textContent = JSON.stringify(config, null, 2);
-    }
+        addLog(`${imported} key diimpor`);
+        toast(`${imported} key diimpor`, 'ok');
+        await refreshAll();
+      } catch (err) {
+        toast(`Import gagal: ${err.message}`, 'err');
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  }
 
-    async function copyConfig() {
-      const config = document.getElementById('opencode-config').textContent;
-      await navigator.clipboard.writeText(config);
-      const btn = document.getElementById('copy-config-btn');
-      btn.textContent = 'Copied!';
-      setTimeout(() => btn.textContent = 'Copy Configuration', 2000);
-    }
+  /* ================= REFRESH ================= */
+  function startPeriodicRefresh() {
+    setInterval(async () => {
+      if (document.hidden) return;
+      await refreshAll();
+      checkServer();
+    }, 5000);
+  }
 
-    // Export/Import
-    function exportData() {
-      const data = { keys: keys.map(k => ({ ...k, key: k.key.replace(/•/g, '') })), exportedAt: new Date().toISOString() };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `api-keys-backup-${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      addLog('Exported keys to JSON');
-    }
+  /* ================= HELPERS ================= */
+  function getStatusLabel(status) {
+    return { active: 'Aktif', cooldown: 'Cooldown', disabled: 'Nonaktif' }[status] || status;
+  }
 
-    function importData(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const data = JSON.parse(event.target.result);
-          if (data.keys && Array.isArray(data.keys)) {
-            for (const key of data.keys) {
-              if (key.key && !key.key.startsWith('•')) {
-                await apiFetch('/keys', {
-                  method: 'POST',
-                  body: JSON.stringify({ provider: key.provider, name: key.name, key: key.key })
-                });
-              }
-            }
-            addLog(`Imported ${data.keys.length} keys`);
-            await loadKeys();
-            await loadStats();
-          }
-        } catch (err) {
-          alert(`Import failed: ${err.message}`);
-        }
-        e.target.value = '';
-      };
-      reader.readAsText(file);
-    }
+  function formatCooldown(timestamp) {
+    const remaining = Math.max(0, Math.ceil((timestamp - Date.now()) / 1000));
+    return remaining <= 0 ? 'sebentar…' : `${remaining}s`;
+  }
 
-    // Periodic refresh
-    function startPeriodicRefresh() {
-      setInterval(async () => {
-        await loadKeys();
-        await loadStats();
-      }, 5000);
-    }
+  function formatDate(isoString) {
+    const date = new Date(isoString);
+    const diff = Date.now() - date.getTime();
+    if (diff < 60000) return 'baru saja';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)} mnt lalu`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)} jam lalu`;
+    return date.toLocaleDateString('id-ID');
+  }
 
-    // Helpers
-    function getProviderColor(provider) {
-      const colors = { openrouter: 'purple', groq: 'orange', deepseek: 'blue', gemini: 'indigo', together: 'pink' };
-      return colors[provider] || 'gray';
-    }
+  function toast(message, type = '') {
+    const host = document.getElementById('toasts');
+    const el = document.createElement('div');
+    el.className = `toast${type ? ` is-${type}` : ''}`;
+    el.textContent = message;
+    host.appendChild(el);
+    setTimeout(() => {
+      el.style.transition = 'opacity .2s ease, transform .2s ease';
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(6px)';
+      setTimeout(() => el.remove(), 220);
+    }, 2600);
+  }
 
-    function getProviderIcon(provider) {
-      const icons = {
-        openrouter: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 7a1 1 0 10-2 0v5a1 1 0 00.293.707l3 3a1 1 0 001.414 0l3-3A1 1 0 0011 12V9z"/></svg>',
-        groq: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 2a6 6 0 110 12 6 6 0 010-12z"/></svg>',
-        deepseek: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM7 10h6v2H7v-2z"/></svg>',
-        gemini: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm3.707 9.293a1 1 0 00-1.414 0L9 12.586 7.707 11.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg>',
-        together: '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM7 10h6v2H7v-2z"/></svg>'
-      };
-      return icons[provider] || '<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16z"/></svg>';
-    }
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = String(text ?? '');
+    return div.innerHTML;
+  }
 
-    function getStatusLabel(status) {
-      const labels = { active: 'Active', cooldown: 'Cooldown', disabled: 'Disabled' };
-      return labels[status] || status;
-    }
-
-    function formatCooldown(timestamp) {
-      const remaining = Math.max(0, Math.ceil((timestamp - Date.now()) / 1000));
-      if (remaining <= 0) return 'expiring...';
-      return `${remaining}s`;
-    }
-
-    function formatDate(isoString) {
-      const date = new Date(isoString);
-      const now = new Date();
-      const diff = now - date;
-      if (diff < 60000) return 'Just now';
-      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-      return date.toLocaleDateString();
-    }
-
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
-
-    function escapeAttr(text) {
-      const map = {
-        '&': String.fromCharCode(38),
-        '<': String.fromCharCode(60),
-        '>': String.fromCharCode(62),
-        '"': String.fromCharCode(34),
-        "'": String.fromCharCode(39)
-      };
-      return String(text).replace(/[&<>"']/g, ch => map[ch]);
-    }
-  </script>
+  function escapeAttr(text) {
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(text ?? '').replace(/[&<>"']/g, ch => map[ch]);
+  }
+</script>
 </body>
 </html>
