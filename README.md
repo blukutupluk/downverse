@@ -65,6 +65,18 @@ Cocok untuk kamu yang ingin:
 
 ---
 
+## 📸 Tampilan Aplikasi
+
+Menu utama `downloader.sh` saat dijalankan di Termux:
+
+<div align="center">
+
+<img src="docs/screenshots/downloader-termux.png" alt="Tampilan menu Downverse di Termux" width="720">
+
+</div>
+
+---
+
 ## ⚙️ Cara Kerja
 
 ```
